@@ -7,7 +7,6 @@ export enum InterpreterStatus {
   Stopped = 2
 }
 
-export type SingleOrArray<T> = T[] | T;
 export interface EventObject {
   type: string;
 }
@@ -47,7 +46,7 @@ export type ServiceFrom<T> = ReturnTypeOrValue<T> extends infer R
 export type MachineImplementationsFrom<
   TMachine extends StateMachine.AnyMachine
 > = {
-  actions?: StateMachine.ActionMap<ContextFrom<TMachine>, EventFrom<TMachine>>;
+  actions: StateMachine.ActionMap<ContextFrom<TMachine>, EventFrom<TMachine>>;
 };
 
 export namespace StateMachine {
@@ -93,10 +92,11 @@ export namespace StateMachine {
   > =
     | TStateValue
     | {
-        target?: TStateValue;
-        actions?: SingleOrArray<Action<TContext, TEvent>>;
-        cond?: (context: TContext, event: TEvent) => boolean;
+        target: TStateValue;
+        actions: Array<Action<TContext, TEvent>>;
+        cond: (context: TContext, event: TEvent) => boolean;
       };
+
   export interface State<
     TContext extends object,
     TEvent extends EventObject,
@@ -130,13 +130,13 @@ export namespace StateMachine {
     TEvent extends EventObject,
     TState extends Typestate<TContext> = Typestate<TContext>
   > {
-    id?: string;
+    id: string;
     initial: TState['value'];
-    context?: TContext;
+    context: TContext | null;
     states: {
       [key in TState['value']]: {
-        on?: {
-          [K in TEvent['type'] | '*']?: SingleOrArray<
+        on: {
+          [K in TEvent['type'] | '*']?: Array<
             K extends '*'
               ? Transition<TContext, TEvent, TState['value']>
               : Transition<
@@ -146,8 +146,8 @@ export namespace StateMachine {
                 >
           >;
         };
-        exit?: SingleOrArray<Action<TContext, TEvent>>;
-        entry?: SingleOrArray<Action<TContext, TEvent>>;
+        exit: Array<Action<TContext, TEvent>>;
+        entry: Array<Action<TContext, TEvent>>;
       };
     };
   }
@@ -210,3 +210,19 @@ export type ExtractEvent<
   TEvent extends EventObject,
   TEventType extends TEvent['type']
 > = TEvent extends { type: TEventType } ? TEvent : never;
+
+export interface HandledActions<
+  TContext extends object,
+  TEvent extends EventObject = EventObject
+> {
+  actions: Array<StateMachine.ActionObject<TContext, TEvent>>;
+  ctx: TContext;
+  assigned: boolean;
+}
+
+export interface Implementations<
+  TContext extends object,
+  TEvent extends EventObject
+> {
+  actions: StateMachine.ActionMap<TContext, TEvent>;
+}

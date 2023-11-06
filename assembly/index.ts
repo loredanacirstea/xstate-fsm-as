@@ -8,7 +8,9 @@ import {
   ServiceFrom,
   StateFrom,
   StateMachine,
-  Typestate
+  Typestate,
+  HandledActions,
+  Implementations,
 } from './types';
 
 export {
@@ -27,14 +29,12 @@ const INIT_EVENT: InitEvent = { type: 'xstate.init' };
 const ASSIGN_ACTION: StateMachine.AssignAction = 'xstate.assign';
 const WILDCARD = '*';
 
-function toArray<T>(item: T | T[] | undefined): T[] {
-  return item === undefined ? [] : ([] as T[]).concat(item);
+function toArray<T>(item: T | null): T[] {
+  return item === null ? [] : ([] as T[]).concat(item);
 }
 
 export function assign<TC extends object, TE extends EventObject = EventObject>(
-  assignment:
-    | StateMachine.Assigner<TC, TE>
-    | StateMachine.PropertyAssigner<TC, TE>
+  assignment: StateMachine.Assigner<TC, TE>
 ): StateMachine.AssignActionObject<TC, TE> {
   return {
     type: ASSIGN_ACTION,
@@ -42,40 +42,45 @@ export function assign<TC extends object, TE extends EventObject = EventObject>(
   };
 }
 
+export function assign2<TC extends object, TE extends EventObject = EventObject>(
+  assignment: StateMachine.PropertyAssigner<TC, TE>
+): StateMachine.AssignActionObject<TC, TE> {
+  return {
+    type: ASSIGN_ACTION,
+    assignment
+  };
+}
+
+function toActionObjectFromString<TContext extends object, TEvent extends EventObject>(
+  action: string,
+  actionMap: StateMachine.ActionMap<TContext, TEvent> | null
+): StateMachine.ActionObject<TContext, TEvent> {
+  action = actionMap && actionMap[action] ? actionMap[action]: null;
+  return {
+    type: action
+  }
+}
+
 function toActionObject<TContext extends object, TEvent extends EventObject>(
-  // tslint:disable-next-line:ban-types
-  action:
-    | string
-    | StateMachine.ActionFunction<TContext, TEvent>
-    | StateMachine.ActionObject<TContext, TEvent>,
-  actionMap: StateMachine.ActionMap<TContext, TEvent> | undefined
-) {
-  action =
-    typeof action === 'string' && actionMap && actionMap[action]
-      ? actionMap[action]
-      : action;
-  return typeof action === 'string'
-    ? {
-        type: action
-      }
-    : typeof action === 'function'
-    ? {
-        type: action.name,
-        exec: action
-      }
-    : action;
+  action: StateMachine.ActionFunction<TContext, TEvent>,
+  actionMap: StateMachine.ActionMap<TContext, TEvent> | null
+): StateMachine.ActionObject<TContext, TEvent> {
+  return {
+    type: action.name,
+    exec: action
+  }
 }
 
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
-function createMatcher(value: string) {
+function createMatcher(value: string): (stateValue: any) => boolean {
   return (stateValue) => value === stateValue;
 }
 
 function toEventObject<TEvent extends EventObject>(
-  event: TEvent['type'] | TEvent
+  event: string // TEvent['type']
 ): TEvent {
-  return (typeof event === 'string' ? { type: event } : event) as TEvent;
+  return ({ type: event }) as TEvent;
 }
 
 function createUnchangedState<
@@ -99,7 +104,7 @@ function handleActions<
   actions: Array<StateMachine.ActionObject<TContext, TEvent>>,
   context: TContext,
   eventObject: TEvent
-): [Array<StateMachine.ActionObject<TContext, TEvent>>, TContext, boolean] {
+): HandledActions<TContext, TEvent> {
   let nextContext = context;
   let assigned = false;
 
@@ -125,7 +130,15 @@ function handleActions<
     return true;
   });
 
-  return [nonAssignActions, nextContext, assigned];
+  return {actions: nonAssignActions, ctx: nextContext, assigned};
+}
+
+function toStateFromString<
+  TContext extends object,
+  TEvent extends EventObject = EventObject,
+  TState extends Typestate<TContext> = Typestate<TContext>
+>(state: string, ctx: TContext): StateMachine.State<TContext, TEvent, TState> {
+  return { value: state, context: ctx };
 }
 
 export function createMachine<
@@ -134,9 +147,7 @@ export function createMachine<
   TState extends Typestate<TContext> = Typestate<TContext>
 >(
   fsmConfig: StateMachine.Config<TContext, TEvent, TState>,
-  implementations: {
-    actions?: StateMachine.ActionMap<TContext, TEvent>;
-  } = {}
+  implementations: Implementations<TContext, TEvent> = {actions: []}
 ): StateMachine.Machine<TContext, TEvent, TState> {
   if (!IS_PRODUCTION) {
     Object.keys(fsmConfig.states).forEach((state) => {
@@ -147,13 +158,15 @@ export function createMachine<
     });
   }
 
-  const [initialActions, initialContext] = handleActions(
-    toArray(fsmConfig.states[fsmConfig.initial].entry).map((action) =>
+  const res = handleActions(
+    fsmConfig.states[fsmConfig.initial].entry.map((action: StateMachine.Action<TContext, TEvent>) =>
       toActionObject(action, implementations.actions)
     ),
     fsmConfig.context!,
     INIT_EVENT as TEvent
   );
+  const initialActions = res.actions;
+  const initialContext = res.ctx;
 
   const machine = {
     config: fsmConfig,
@@ -165,7 +178,7 @@ export function createMachine<
       matches: createMatcher(fsmConfig.initial)
     },
     transition: (
-      state: string | StateMachine.State<TContext, TEvent, TState>,
+      state:  StateMachine.State<TContext, TEvent, TState>, // string
       event: TEvent | TEvent['type']
     ): StateMachine.State<TContext, TEvent, TState> => {
       const { value, context } =
@@ -193,7 +206,9 @@ export function createMachine<
         > = toArray(stateConfig.on[eventObject.type]);
 
         if (WILDCARD in stateConfig.on) {
-          transitions.push(...toArray(stateConfig.on[WILDCARD]));
+          const _trans = toArray(stateConfig.on[WILDCARD])
+          // for (let i = 0; i < )
+          transitions.push(stateConfig.on[WILDCARD]);
         }
 
         for (const transition of transitions) {
@@ -233,11 +248,14 @@ export function createMachine<
               toActionObject(action, (machine as any)._options.actions)
             );
 
-            const [nonAssignActions, nextContext, assigned] = handleActions(
+            const res = handleActions(
               allActions,
               context,
               eventObject
             );
+            const nonAssignActions = res.actions;
+            const nextContext = res.ctx;
+            const assigned = res.assigned;
 
             const resolvedTarget = target ?? value;
 
@@ -260,14 +278,16 @@ export function createMachine<
   return machine;
 }
 
-const executeStateActions = <
+function executeStateActions<
   TContext extends object,
   TEvent extends EventObject = any,
   TState extends Typestate<TContext> = { value: any; context: TContext }
 >(
   state: StateMachine.State<TContext, TEvent, TState>,
   event: TEvent | InitEvent
-) => state.actions.forEach(({ exec }) => exec && exec(state.context, event));
+): void {
+  state.actions.forEach(({ exec }) => exec && exec(state.context, event));
+}
 
 export function interpret<
   TContext extends object,
