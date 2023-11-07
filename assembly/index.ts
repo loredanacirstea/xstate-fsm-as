@@ -1,16 +1,17 @@
 import {
-  ContextFrom,
-  EventFrom,
+  // ContextFrom,
+  // EventFrom,
   EventObject,
   InitEvent,
   InterpreterStatus,
-  MachineImplementationsFrom,
-  ServiceFrom,
-  StateFrom,
+  // MachineImplementationsFrom,
+  // ServiceFrom,
+  // StateFrom,
   StateMachine,
   Typestate,
   HandledActions,
   Implementations,
+  UnsubscribeReturnValue,
 } from './types';
 
 export {
@@ -18,14 +19,18 @@ export {
   EventObject,
   InterpreterStatus,
   Typestate,
-  MachineImplementationsFrom,
-  StateFrom,
-  EventFrom,
-  ContextFrom,
-  ServiceFrom
+  // MachineImplementationsFrom,
+  // StateFrom,
+  // ServiceFrom,
+  // EventFrom,
+  // ContextFrom,
 };
 
-const INIT_EVENT: InitEvent = { type: 'xstate.init' };
+@external("env", "process.env.NODE_ENV")
+declare function nodeEnv(): string
+
+// const INIT_EVENT: InitEvent = { type: 'xstate.init' };
+const INIT_EVENT = new InitEvent();
 const ASSIGN_ACTION: StateMachine.AssignAction = 'xstate.assign';
 const WILDCARD = '*';
 
@@ -71,16 +76,16 @@ function toActionObject<TContext extends object, TEvent extends EventObject>(
   }
 }
 
-const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const IS_PRODUCTION = nodeEnv() === 'production';
 
-function createMatcher(value: string): (stateValue: any) => boolean {
-  return (stateValue) => value === stateValue;
+function createMatcher(value: string): (stateValue: string) => boolean {
+  return (stateValue: string) => value === stateValue;
 }
 
 function toEventObject<TEvent extends EventObject>(
-  event: string // TEvent['type']
+  eventName: string
 ): TEvent {
-  return ({ type: event }) as TEvent;
+  return ({ type: eventName }) as TEvent;
 }
 
 function createUnchangedState<
@@ -179,18 +184,21 @@ export function createMachine<
     },
     transition: (
       state:  StateMachine.State<TContext, TEvent, TState>, // string
-      event: TEvent | TEvent['type']
+      event: TEvent
     ): StateMachine.State<TContext, TEvent, TState> => {
-      const { value, context } =
+      const res =
         typeof state === 'string'
           ? { value: state, context: fsmConfig.context! }
           : state;
-      const eventObject = toEventObject<TEvent>(event);
+
+      const value = res.value;
+      const context = res.context;
+      const eventObject = event; // toEventObject<TEvent>(event);
       const stateConfig = fsmConfig.states[value];
 
       if (!IS_PRODUCTION && !stateConfig) {
         throw new Error(
-          `State '${value}' not found on machine ${fsmConfig.id ?? ''}`
+          `State '${value}' not found on machine ${fsmConfig.id || ''}`
         );
       }
 
@@ -202,13 +210,14 @@ export function createMachine<
 
       if (stateConfig.on) {
         const transitions: Array<
-          StateMachine.Transition<TContext, TEvent, TState['value']>
+          StateMachine.Transition<TContext, TEvent, string>
         > = toArray(stateConfig.on[eventObject.type]);
 
         if (WILDCARD in stateConfig.on) {
-          const _trans = toArray(stateConfig.on[WILDCARD])
-          // for (let i = 0; i < )
-          transitions.push(stateConfig.on[WILDCARD]);
+          const _trans = stateConfig.on[WILDCARD];
+          for (let i = 0; i < _trans.length; i++) {
+            transitions.push(_trans[i]);
+          }
         }
 
         for (const transition of transitions) {
@@ -216,23 +225,22 @@ export function createMachine<
             return createUnchangedState(value, context);
           }
 
-          const {
-            target,
-            actions = [],
-            cond = () => true
-          } = typeof transition === 'string'
+          const res = typeof transition === 'string'
             ? { target: transition }
             : transition;
+          const target = res.target;
+          const actions = res.actions || [];
+          const cond = res.cond || (() => true);
 
           const isTargetless = target === undefined;
 
-          const nextStateValue = target ?? value;
+          const nextStateValue = target || value;
           const nextStateConfig = fsmConfig.states[nextStateValue];
 
           if (!IS_PRODUCTION && !nextStateConfig) {
             throw new Error(
               `State '${nextStateValue}' not found on machine ${
-                fsmConfig.id ?? ''
+                fsmConfig.id || ''
               }`
             );
           }
@@ -257,7 +265,7 @@ export function createMachine<
             const nextContext = res.ctx;
             const assigned = res.assigned;
 
-            const resolvedTarget = target ?? value;
+            const resolvedTarget = target || value;
 
             return {
               value: resolvedTarget,
@@ -280,91 +288,105 @@ export function createMachine<
 
 function executeStateActions<
   TContext extends object,
-  TEvent extends EventObject = any,
-  TState extends Typestate<TContext> = { value: any; context: TContext }
+  TEvent extends EventObject,
+  TState extends Typestate<TContext>,
 >(
   state: StateMachine.State<TContext, TEvent, TState>,
-  event: TEvent | InitEvent
+  event: TEvent
 ): void {
-  state.actions.forEach(({ exec }) => exec && exec(state.context, event));
+  state.actions.forEach((action: StateMachine.ActionObject<TContext, TEvent>) => {
+    const exec = action.exec;
+    exec && exec(state.context, event)
+  });
+}
+
+
+export class Service<
+  TContext extends object,
+  TEvent extends EventObject,
+  TState extends Typestate<TContext>,
+> implements StateMachine.Service<TContext, TEvent, TState> {
+  _machine: StateMachine.Machine<TContext, TEvent, TState>
+  state: StateMachine.State<TContext, TEvent, TState>
+  status: InterpreterStatus
+  listeners: Set<StateMachine.StateListener<StateMachine.State<TContext, TEvent, TState>>>
+
+  constructor(
+    machine: StateMachine.Machine<TContext, TEvent, TState>,
+  ) {
+    this._machine = machine;
+    this.state = machine.initialState;;
+    this.status = InterpreterStatus.NotStarted;
+    this.listeners = new Set<StateMachine.StateListener<StateMachine.State<TContext, TEvent, TState>>>();
+  }
+
+  send(event: TEvent): void {
+    if (this.status !== InterpreterStatus.Running) {
+      return;
+    }
+    this.state = this._machine.transition(this.state, event);
+    executeStateActions(this.state, event);
+    this.listeners.values().forEach((listener: StateMachine.StateListener<StateMachine.State<TContext, TEvent, TState>>) => listener(this.state));
+  }
+
+  subscribe(listener: StateMachine.StateListener<StateMachine.State<TContext, TEvent, TState>>): UnsubscribeReturnValue {
+    this.listeners.add(listener);
+    listener(this.state);
+
+    return {
+      unsubscribe: () => this.listeners.delete(listener)
+    };
+  }
+
+  start(
+    initialState: TState | null,
+  ): Service<TContext, TEvent, TState> {
+    if (initialState) {
+      const resolved =
+        typeof initialState === 'object'
+          ? initialState
+          : { context: this._machine.config.context!, value: initialState };
+      this.state = {
+        value: resolved.value,
+        actions: [],
+        context: resolved.context,
+        matches: createMatcher(resolved.value),
+        changed: false,
+      };
+
+      if (!IS_PRODUCTION) {
+        if (!(this.state.value in this._machine.config.states)) {
+          throw new Error(
+            `Cannot start service in state '${
+              this.state.value
+            }'. The state is not found on machine${
+              this._machine.config.id ? ` '${this._machine.config.id}'` : ''
+            }.`
+          );
+        }
+      }
+    } else {
+      this.state = this._machine.initialState;
+    }
+    this.status = InterpreterStatus.Running;
+    executeStateActions(this.state, INIT_EVENT);
+    return this;
+  }
+
+  stop(): Service<TContext, TEvent, TState> {
+    this.status = InterpreterStatus.Stopped;
+    this.listeners.clear();
+    return this;
+  }
 }
 
 export function interpret<
   TContext extends object,
-  TEvent extends EventObject = EventObject,
-  TState extends Typestate<TContext> = { value: any; context: TContext }
+  TEvent extends EventObject,
+  TState extends Typestate<TContext>,
 >(
   machine: StateMachine.Machine<TContext, TEvent, TState>
 ): StateMachine.Service<TContext, TEvent, TState> {
-  let state = machine.initialState;
-  let status = InterpreterStatus.NotStarted;
-  const listeners = new Set<StateMachine.StateListener<typeof state>>();
-
-  const service = {
-    _machine: machine,
-    send: (event: TEvent | TEvent['type']): void => {
-      if (status !== InterpreterStatus.Running) {
-        return;
-      }
-      state = machine.transition(state, event);
-      executeStateActions(state, toEventObject(event));
-      listeners.forEach((listener) => listener(state));
-    },
-    subscribe: (listener: StateMachine.StateListener<typeof state>) => {
-      listeners.add(listener);
-      listener(state);
-
-      return {
-        unsubscribe: () => listeners.delete(listener)
-      };
-    },
-    start: (
-      initialState?:
-        | TState['value']
-        | { context: TContext; value: TState['value'] }
-    ) => {
-      if (initialState) {
-        const resolved =
-          typeof initialState === 'object'
-            ? initialState
-            : { context: machine.config.context!, value: initialState };
-        state = {
-          value: resolved.value,
-          actions: [],
-          context: resolved.context,
-          matches: createMatcher(resolved.value)
-        };
-
-        if (!IS_PRODUCTION) {
-          if (!(state.value in machine.config.states)) {
-            throw new Error(
-              `Cannot start service in state '${
-                state.value
-              }'. The state is not found on machine${
-                machine.config.id ? ` '${machine.config.id}'` : ''
-              }.`
-            );
-          }
-        }
-      } else {
-        state = machine.initialState;
-      }
-      status = InterpreterStatus.Running;
-      executeStateActions(state, INIT_EVENT);
-      return service;
-    },
-    stop: () => {
-      status = InterpreterStatus.Stopped;
-      listeners.clear();
-      return service;
-    },
-    get state() {
-      return state;
-    },
-    get status() {
-      return status;
-    }
-  };
-
+  const service = new Service(machine);
   return service;
 }
