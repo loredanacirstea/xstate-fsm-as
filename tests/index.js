@@ -1,5 +1,5 @@
 import assert from "assert";
-import { createMachine, interpret, getState } from "../build/debug.js";
+import { createMachine } from "../build/debug.js";
 // assert.strictEqual(add(1, 2), 3);
 // console.log("ok");
 
@@ -14,6 +14,8 @@ const machineConfig = {
             target: "blue",
           },
         },
+        exit: [],
+        entry: [],
       },
       "blue": {
         on: {
@@ -21,21 +23,60 @@ const machineConfig = {
             target: "white",
           },
         },
+        exit: [],
+        entry: [],
       },
       "white": {
         on: {
           next: {
-            target: "New state 1",
+            target: "red",
           },
         },
+        exit: [],
+        entry: [],
       },
     },
 }
 
-const machineId = createMachine(machineConfig);
-let currentState = getState(machineId);
+const machineConfig2 = {
+    id: "Semaphore",
+    initial: "red",
+    // context: {state: "red"},
+    states: [
+        {
+            name: "red",
+            on: {
+                next: {
+                    target: "blue",
+                },
+            },
+            exit: [],
+            entry: [],
+        },
+        {
+            name: "blue",
+            on: {
+                next: {
+                    target: "red",
+                },
+            },
+            exit: [],
+            entry: [],
+        },
+    ],
+}
+const implementations = {actions: {}};
 
-const nextState = transition(machineId, 'green', 'TIMER');
+const machineConfigStr = JSON.stringify(machineConfig2);
+const implementationsStr = JSON.stringify(implementations);
+const machineId = createMachine(encodeToUtf8Array(machineConfigStr), encodeToUtf8Array(implementationsStr));
+console.log("!!!!!machineId", machineId)
+
+// let currentState = getState(machineId);
+
+// const nextState = transition(machineId, 'green', 'TIMER');
+
+
 // expect(nextState.value).toEqual('yellow');
 // expect(nextState.actions.map((action) => action.type)).toEqual([
 //     'exitGreen',
@@ -47,3 +88,19 @@ const nextState = transition(machineId, 'green', 'TIMER');
 //     foo: 'static++',
 //     go: false
 // });
+
+
+export function encodeToUtf8Array(str) {
+    const encoder = new TextEncoder();
+    return encoder.encode(str);
+}
+
+export function decodeFromUtf8Array(arr) {
+    const encoder = new TextDecoder();
+    return encoder.decode(arr);
+}
+
+export function hexToUint8Array(hexString) {
+    const encodedString = hexString.match(/.{1,2}/g).map(byte => parseInt(byte, 16));
+    return new Uint8Array(encodedString);
+}
