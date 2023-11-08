@@ -1,5 +1,5 @@
 import assert from "assert";
-import { createMachine } from "../build/debug.js";
+import { createMachine, getCurrentState } from "../build/debug.js";
 // assert.strictEqual(add(1, 2), 3);
 // console.log("ok");
 
@@ -72,7 +72,13 @@ const implementationsStr = JSON.stringify(implementations);
 const machineId = createMachine(encodeToUtf8Array(machineConfigStr), encodeToUtf8Array(implementationsStr));
 console.log("!!!!!machineId", machineId)
 
-// let currentState = getState(machineId);
+const nextState = lightFSM.transition('blue', 'next');
+// expect(nextState.value).toEqual('red');
+expect(nextState).toEqual('red');
+
+let currentState = getCurrentState(machineId);
+console.log("!!!!!currentState", currentState)
+assert.strictEqual(currentState, "blue");
 
 // const nextState = transition(machineId, 'green', 'TIMER');
 

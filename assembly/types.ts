@@ -12,6 +12,14 @@ export interface EventObject {
   type: string;
 }
 
+export class EventClass implements EventObject {
+  type: string;
+
+  constructor(type: string) {
+    this.type = type;
+  }
+}
+
 export class InitEvent implements EventObject {
   type: string = 'xstate.init';
 }
@@ -45,7 +53,10 @@ TEvent extends EventObject,
 > = Map<string,StateInfo<TContext, TEvent>>
 
 export namespace StateMachine {
-  export interface Action<TContext extends Map<string,string>, TEvent extends EventObject> {
+  export interface Action<
+    TContext extends Map<string,string>,
+    TEvent extends EventObject
+  > {
     value: string;
     action: ActionObject<TContext, TEvent> | null;
     actionFn: ActionFunction<TContext, TEvent> | null;
@@ -89,8 +100,10 @@ export namespace StateMachine {
     TEvent extends EventObject
   > extends ActionObject<TContext, TEvent> {
     type: AssignAction;
-    assignment: PropertyAssigner<TContext> | null;
-    assignmentFn: PropertyAssignerFn<TContext, TEvent> | null;
+    // assignment: PropertyAssigner<TContext> | null;
+    assignment: Map<string, string> | null;
+    // assignmentFn: PropertyAssignerFn<TContext, TEvent> | null;
+    assignmentFn: ((context: TContext, event: TEvent) => string) | null;
   }
 
   export interface Transition<
@@ -128,7 +141,7 @@ export namespace StateMachine {
   > {
     id: string;
     initial: string;
-    context: TContext | null;
+    context: TContext;
     states: States<TContext, TEvent>;
   }
 
@@ -225,11 +238,6 @@ export class Implementations<
 export interface UnsubscribeReturnValue {
   unsubscribe: () => void;
 }
-
-// export class ActionMap<
-//   TContext extends Map<string,string>,
-//   TEvent extends EventObject
-// > implements StateMachine.ActionMap<TContext, TEvent> {}
 
 // @ts-ignore
 @serializable
@@ -330,12 +338,12 @@ export class Transition<
   TStateValue extends string = string
 > implements StateMachine.Transition<TContext, TEvent, string>{
   target: TStateValue;
-  actions: Array<ActionClass<TContext, TEvent>>;
+  actions: Array<StateMachine.Action<TContext, TEvent>>;
   cond: ((context: TContext, event: TEvent) => boolean) | null;
 
   constructor(
     target: TStateValue,
-    actions: Array<ActionClass<TContext, TEvent>>,
+    actions: Array<StateMachine.Action<TContext, TEvent>>,
     cond: ((context: TContext, event: TEvent) => boolean) | null,
   ) {
     this.target = target;
@@ -350,7 +358,7 @@ export class TransitionExternal<
   TContext extends Map<string,string>,
   TEvent extends EventObject,
   TStateValue extends string = string
-> implements StateMachine.Transition<TContext, TEvent, string>{
+> {
   name: string;
   target: TStateValue;
   actions: Array<ActionClass<TContext, TEvent>>;
@@ -373,16 +381,16 @@ export class Config<
   TContext extends Map<string,string>,
   TEvent extends EventObject,
   TState extends Typestate<TContext>,
-> {
+> implements StateMachine.Config<TContext, TEvent, TState>{
   id: string;
   initial: string;
-  context: TContext | null;
+  context: TContext;
   states: States<TContext, TEvent>;
 
   constructor(
     id: string,
     initial: string,
-    context: TContext | null,
+    context: TContext,
     states: States<TContext, TEvent>,
   ) {
     this.id = id;
