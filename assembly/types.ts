@@ -8,20 +8,16 @@ export interface EventObject {
   type: string;
 }
 
-export class InitEvent {
+export class InitEvent implements EventObject {
   type: string = 'xstate.init';
 }
 
-export interface ContextGeneral {
-  [key: string]: any;
-}
+export type ContextGeneral<T> =  Map<string,T>
 
-export interface StateInfoEvents<
+export type StateInfoEvents<
 TContext extends object,
 TEvent extends EventObject,
-> {
-  [key: string]: Array<StateMachine.Transition<TContext, TEvent, string>>;
-}
+> = Map<string,Array<StateMachine.Transition<TContext, TEvent, string>>>
 
 export interface StateInfo<
   TContext extends object,
@@ -32,12 +28,10 @@ export interface StateInfo<
   entry: Array<StateMachine.Action<TContext, TEvent>>;
 }
 
-export interface States<
+export type States<
 TContext extends object,
 TEvent extends EventObject,
-> {
-  [key: string]: StateInfo<TContext, TEvent>;
-}
+> = Map<string,StateInfo<TContext, TEvent>>
 
 export namespace StateMachine {
   export interface Action<TContext extends object, TEvent extends EventObject> {
@@ -47,10 +41,19 @@ export namespace StateMachine {
     assignAction: AssignActionObject<TContext, TEvent> | null;
   }
 
+  // export interface ActionMap<
+  //   TContext extends object,
+  //   TEvent extends EventObject
+  // > {
+  //   // Record<string, Exclude<Action<TContext, TEvent>, string>>
+  //   [key: string]: Exclude<Action<TContext, TEvent>, string>
+  // }
+
   export type ActionMap<
     TContext extends object,
     TEvent extends EventObject
-  > = Record<string, Exclude<Action<TContext, TEvent>, string>>;
+  > = Map<string, string>
+  // > = Map<string, Exclude<Action<TContext, TEvent>, string>>
 
   export interface ActionObject<
     TContext extends object,
@@ -58,7 +61,7 @@ export namespace StateMachine {
   > {
     type: string;
     exec: ActionFunction<TContext, TEvent> | null;
-    [key: string]: any;
+    properties: Map<string,any>
   }
 
   export type ActionFunction<
@@ -182,13 +185,37 @@ export interface HandledActions<
   assigned: boolean;
 }
 
-export interface Implementations<
+export class Implementations<
   TContext extends object,
   TEvent extends EventObject
 > {
   actions: StateMachine.ActionMap<TContext, TEvent>;
+
+  constructor() {
+    this.actions = new Map<string,string>();
+  }
 }
 
 export interface UnsubscribeReturnValue {
   unsubscribe: () => void;
+}
+
+// export class ActionMap<
+//   TContext extends object,
+//   TEvent extends EventObject
+// > implements StateMachine.ActionMap<TContext, TEvent> {}
+
+export class ActionObject<
+  TContext extends object,
+  TEvent extends EventObject
+> implements StateMachine.ActionObject<TContext, TEvent>{
+  type: string;
+  exec: StateMachine.ActionFunction<TContext, TEvent> | null;
+  properties: Map<string,string>
+
+  constructor(type: string, exec: StateMachine.ActionFunction<TContext, TEvent> | null, properties: Map<string,string>) {
+    this.type = type;
+    this.exec = exec;
+    this.properties = properties;
+  }
 }

@@ -1,3 +1,4 @@
+import { JSON } from "json-as/assembly";
 import {
   // ContextFrom,
   // EventFrom,
@@ -12,6 +13,9 @@ import {
   HandledActions,
   Implementations,
   UnsubscribeReturnValue,
+  ContextGeneral,
+  ActionObject,
+  // ActionMap,
 } from './types';
 
 export {
@@ -39,7 +43,8 @@ function toArray<T>(item: T | null): T[] {
 }
 
 export function assign<TC extends object, TE extends EventObject = EventObject>(
-  assignment: StateMachine.Assigner<TC, TE>
+  // assignment: StateMachine.Assigner<TC, TE>
+  assignment: StateMachine.PropertyAssigner<TC, TE>
 ): StateMachine.AssignActionObject<TC, TE> {
   return {
     type: ASSIGN_ACTION,
@@ -66,14 +71,21 @@ function toActionObjectFromString<TContext extends object, TEvent extends EventO
   }
 }
 
+// function toActionObject<TContext extends object, TEvent extends EventObject>(
+//   action: StateMachine.ActionFunction<TContext, TEvent>,
+//   actionMap: StateMachine.ActionMap<TContext, TEvent>
+// ): StateMachine.ActionObject<TContext, TEvent> {
+//   return {
+//     type: action.name,
+//     exec: action
+//   }
+// }
+
 function toActionObject<TContext extends object, TEvent extends EventObject>(
   action: StateMachine.ActionFunction<TContext, TEvent>,
-  actionMap: StateMachine.ActionMap<TContext, TEvent> | null
-): StateMachine.ActionObject<TContext, TEvent> {
-  return {
-    type: action.name,
-    exec: action
-  }
+  actionMap: StateMachine.ActionMap<TContext, TEvent>
+  ): ActionObject<TContext, TEvent> {
+  return new ActionObject<TContext, TEvent>(action.name, action, new Map())
 }
 
 const IS_PRODUCTION = nodeEnv() === 'production';
@@ -103,7 +115,7 @@ function createUnchangedState<
 }
 
 function handleActions<
-  TContext extends object,
+  TContext extends Map<string,string>,
   TEvent extends EventObject = EventObject
 >(
   actions: Array<StateMachine.ActionObject<TContext, TEvent>>,
@@ -112,11 +124,13 @@ function handleActions<
 ): HandledActions<TContext, TEvent> {
   let nextContext = context;
   let assigned = false;
+  const nonAssignActions: StateMachine.ActionObject<TContext, TEvent>[] = [];
 
-  const nonAssignActions = actions.filter((action) => {
+  for (let i = 0; i < actions.length; i++) {
+    const action = actions[i];
     if (action.type === ASSIGN_ACTION) {
       assigned = true;
-      let tmpContext = Object.assign({}, nextContext);
+      let tmpContext = mergeMap<string>(nextContext, new Map());
 
       if (typeof action.assignment === 'function') {
         tmpContext = action.assignment(nextContext, eventObject);
@@ -133,7 +147,7 @@ function handleActions<
       return false;
     }
     return true;
-  });
+  }
 
   return {actions: nonAssignActions, ctx: nextContext, assigned};
 }
@@ -146,27 +160,32 @@ function toStateFromString<
   return { value: state, context: ctx };
 }
 
-export function createMachine<
+function _createMachine<
   TContext extends object,
   TEvent extends EventObject = EventObject,
   TState extends Typestate<TContext> = Typestate<TContext>
 >(
   fsmConfig: StateMachine.Config<TContext, TEvent, TState>,
-  implementations: Implementations<TContext, TEvent> = {actions: []}
+  implementations: Implementations<TContext, TEvent>
 ): StateMachine.Machine<TContext, TEvent, TState> {
-  if (!IS_PRODUCTION) {
-    Object.keys(fsmConfig.states).forEach((state) => {
-      if (fsmConfig.states[state].states) {
-        throw new Error(`Nested finite states not supported.
-            Please check the configuration for the "${state}" state.`);
-      }
-    });
+  const entries = fsmConfig.states.get(fsmConfig.initial).entry;
+  const iniactions:  StateMachine.ActionObject<TContext, TEvent>[] = [];
+  for (let i = 0; i < entries.length; i++) {
+    const action = entries[i];
+    const actionfn = action.actionFn;
+    if (actionfn !== null) {
+      iniactions.push(
+        toActionObject<TContext, TEvent>(actionfn, implementations.actions)
+      );
+    }
   }
-
   const res = handleActions(
-    fsmConfig.states[fsmConfig.initial].entry.map((action: StateMachine.Action<TContext, TEvent>) =>
-      toActionObject(action, implementations.actions)
-    ),
+    // iniactions.map((action: StateMachine.Action<TContext, TEvent>) => {
+    //   // return toActionObject(action, implementations.actions)
+    //   return toActionObject(action.actionFn, implementations.actions)
+    // }
+    // ),
+    iniactions,
     fsmConfig.context!,
     INIT_EVENT as TEvent
   );
@@ -389,4 +408,80 @@ export function interpret<
 ): StateMachine.Service<TContext, TEvent, TState> {
   const service = new Service(machine);
   return service;
+}
+
+
+// Define a Map with number keys and GenericValue<T> values
+class MachinesMap<
+  TContext extends object,
+  TEvent extends EventObject,
+  TState extends Typestate<TContext>,
+> {
+  counter: i32 = 0;
+  private _keys: i32[] = [];
+  private _values: StateMachine.Machine<TContext, TEvent, TState>[] = [];
+
+  set(value: StateMachine.Machine<TContext, TEvent, TState>): i32 {
+    const key = this.counter;
+    this.counter += 1;
+    const index = this._keys.indexOf(key);
+    if (index > -1) {
+      this._values[index] = value;
+    } else {
+      this._keys.push(key);
+      this._values.push(value);
+    }
+    return key;
+  }
+
+  get(key: i32): StateMachine.Machine<TContext, TEvent, TState> | null {
+    const index = this._keys.indexOf(key);
+    if (index > -1) {
+      return this._values[index];
+    }
+    return null;
+  }
+}
+
+const map = new MachinesMap<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>();
+
+export function createMachine(
+  _fsmConfig: ArrayBuffer,
+  _implementations: ArrayBuffer,
+): i32 {
+  const fsmConfigStr = String.UTF8.decode(_fsmConfig);
+  console.log(fsmConfigStr);
+  const fsmConfig = JSON.parse<StateMachine.Config<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>>(fsmConfigStr);
+
+  // let implementations: Implementations<ContextGeneral<string>, EventObject> = {actions: new ActionMap()};
+  // let implementations: Implementations<ContextGeneral<string>, EventObject> = {actions: new Map<string, string>()};
+  let implementations = new Implementations<ContextGeneral<string>, EventObject>();
+  if (_implementations.byteLength > 0) {
+    const implementationsStr = String.UTF8.decode(_implementations);
+    console.log(implementationsStr);
+    implementations = JSON.parse<Implementations<ContextGeneral<string>, EventObject>>(implementationsStr);
+  }
+
+  const machine = _createMachine<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>(fsmConfig, implementations);
+  return map.set(machine);
+}
+
+function mergeMap<T>(original: Map<string,T>, additional: Map<string,T>): Map<string,T> {
+  const result = new Map<string,T>();
+  // Iterate over the keys of the original map
+  const originalKeys = original.keys();
+  for (let i = 0; i < originalKeys.length; i++) {
+    let key = unchecked(originalKeys[i]);
+    let value = original.get(key);
+    result.set(key, value);
+  }
+
+  // Iterate over the keys of the additional map
+  const additionalKeys = additional.keys();
+  for (let i = 0; i < additionalKeys.length; i++) {
+    let key = unchecked(additionalKeys[i]);
+    let value = additional.get(key);
+    result.set(key, value);
+  }
+  return result;
 }
