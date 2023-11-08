@@ -398,7 +398,9 @@ export class Machine<
     const value = state.value;
     const context = state.context;
     const eventObject = event;
+    console.log("----transition-config.states-" + this.config.states.keys().join(","));
     const stateConfig = this.config.states.get(value);
+    console.log("----transition-stateConfig-" + stateConfig.on.keys().join(","));
 
     if (!IS_PRODUCTION && !stateConfig) {
       throw new Error(
@@ -414,6 +416,7 @@ export class Machine<
 
     if (stateConfig.on) {
       const transition = stateConfig.on.get(eventObject.type);
+      console.log("----transition-target--" + transition.target)
       const transitions: Array<
         StateMachine.Transition<TContext, TEvent, string>
       > = [transition];
@@ -438,7 +441,10 @@ export class Machine<
         const isTargetless = target === null;
 
         const nextStateValue = target || value;
+        console.log("----transition-nextStateValue--" + nextStateValue)
         const nextStateConfig = this.config.states.get(nextStateValue);
+
+        console.log("----transition-nextStateConfig--" + nextStateConfig.on.keys().join(","))
 
         if (!IS_PRODUCTION && !nextStateConfig) {
           throw new Error(
@@ -447,7 +453,7 @@ export class Machine<
             }`
           );
         }
-
+        console.log("----transition-cond--" + cond.toString())
         if (cond(context, eventObject)) {
           // const allActions: StateMachine.Action<TContext, TEvent>[] = (
           //   isTargetless
@@ -495,6 +501,7 @@ export class Machine<
           const assigned = res.assigned;
 
           const resolvedTarget = target || value;
+          console.log("----resolvedTarget-" + resolvedTarget)
 
           return new State<TContext, TEvent, TState>(resolvedTarget, nextContext, nonAssignActions, target !== value || nonAssignActions.length > 0 || assigned);
           // matches: createMatcher(resolvedTarget)
@@ -527,10 +534,13 @@ export function createMachine(
     const stateOn: StateInfoEvents<ContextGeneral<string>, EventObject> = new Map<string,StateMachine.Transition<ContextGeneral<string>, EventObject, string>>();
     for (let j = 0; j < state.on.length; j++) {
       const onobj = state.on[j];
+      console.log("----onobj--" + state.name);
       const onobjActions: StateMachine.Action<ContextGeneral<string>, EventObject>[] = [];
-      for (let x = 0; x < onobj.actions.length; x++) {
-        const act = onobj.actions[x];
-        onobjActions.push(act);
+      if (onobj.actions) {
+        for (let x = 0; x < onobj.actions.length; x++) {
+          const act = onobj.actions[x];
+          onobjActions.push(act);
+        }
       }
       stateOn.set(onobj.name, new Transition<ContextGeneral<string>, EventObject>(onobj.target, onobjActions, onobj.cond));
     }
@@ -577,9 +587,11 @@ export function transition(id: i32, stateValueBuf: ArrayBuffer, eventNameBuf: Ar
 
   const stateValue = String.UTF8.decode(stateValueBuf);
   const eventName = String.UTF8.decode(eventNameBuf);
+  console.log("----transition--" + stateValue + " - " + eventName);
   const state = new State<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>(stateValue, machine.config.context, [], false);
   const event: EventObject = new EventClass(eventName);
   const nextState = machine.transition(state, event);
+  console.log("----nextState-" + nextState.value)
   return String.UTF8.encode(nextState.value);
 }
 

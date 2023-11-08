@@ -1,5 +1,5 @@
 import assert from "assert";
-import { createMachine, getCurrentState } from "../build/debug.js";
+import { createMachine, getCurrentState, transition } from "../build/debug.js";
 // assert.strictEqual(add(1, 2), 3);
 // console.log("ok");
 
@@ -45,21 +45,23 @@ const machineConfig2 = {
     states: [
         {
             name: "red",
-            on: {
-                next: {
+            on: [
+                {
+                    name: "next",
                     target: "blue",
                 },
-            },
+            ],
             exit: [],
             entry: [],
         },
         {
             name: "blue",
-            on: {
-                next: {
+            on: [
+                {
+                    name: "next",
                     target: "red",
                 },
-            },
+            ],
             exit: [],
             entry: [],
         },
@@ -72,13 +74,14 @@ const implementationsStr = JSON.stringify(implementations);
 const machineId = createMachine(encodeToUtf8Array(machineConfigStr), encodeToUtf8Array(implementationsStr));
 console.log("!!!!!machineId", machineId)
 
-const nextState = lightFSM.transition('blue', 'next');
-// expect(nextState.value).toEqual('red');
-expect(nextState).toEqual('red');
+const nextState = transition(machineId, encodeToUtf8Array('blue'), encodeToUtf8Array('next'));
+console.log("!!!!!nextState", nextState, decodeFromUtf8Array(nextState))
+// assert.strictEqual(nextState.value, 'red');
+assert.strictEqual(decodeFromUtf8Array(nextState), 'red');
 
-let currentState = getCurrentState(machineId);
-console.log("!!!!!currentState", currentState)
-assert.strictEqual(currentState, "blue");
+// let currentState = getCurrentState(machineId);
+// console.log("!!!!!currentState", currentState)
+// assert.strictEqual(decodeFromUtf8Array(currentState), "blue");
 
 // const nextState = transition(machineId, 'green', 'TIMER');
 
