@@ -242,10 +242,13 @@ function executeStateActions<
   state: StateMachine.State<TContext, TEvent, TState>,
   event: TEvent
 ): void {
-  state.actions.forEach((action: StateMachine.ActionObject<TContext, TEvent>) => {
+  for (let i = 0; i < state.actions.length; i++) {
+    const action = state.actions[i];
     const exec = action.exec;
-    exec && exec(state.context, event)
-  });
+    if (exec) {
+      exec(state.context, event);
+    }
+  }
 }
 
 
@@ -254,7 +257,7 @@ export class Service<
   TEvent extends EventObject,
   TState extends Typestate<TContext>,
 > implements StateMachine.Service<TContext, TEvent, TState> {
-  _machine: StateMachine.Machine<TContext, TEvent, TState>
+  machine: StateMachine.Machine<TContext, TEvent, TState>
   state: StateMachine.State<TContext, TEvent, TState>
   status: InterpreterStatus
   listeners: Set<StateMachine.StateListener<StateMachine.State<TContext, TEvent, TState>>>
@@ -262,8 +265,8 @@ export class Service<
   constructor(
     machine: StateMachine.Machine<TContext, TEvent, TState>,
   ) {
-    this._machine = machine;
-    this.state = machine.initialState;;
+    this.machine = machine;
+    this.state = machine.initialState;
     this.status = InterpreterStatus.NotStarted;
     this.listeners = new Set<StateMachine.StateListener<StateMachine.State<TContext, TEvent, TState>>>();
   }
@@ -272,9 +275,13 @@ export class Service<
     if (this.status !== InterpreterStatus.Running) {
       return;
     }
-    this.state = this._machine.transition(this.state, event);
-    executeStateActions(this.state, event);
-    this.listeners.values().forEach((listener: StateMachine.StateListener<StateMachine.State<TContext, TEvent, TState>>) => listener(this.state));
+    this.state = this.machine.transition(this.state, event);
+    executeStateActions<TContext, TEvent, TState>(this.state, event);
+
+    const listeners = this.listeners.values();
+    for (let i = 0; i < listeners.length; i++) {
+      listeners[i](this.state);
+    }
   }
 
   subscribe(listener: StateMachine.StateListener<StateMachine.State<TContext, TEvent, TState>>): UnsubscribeReturnValue {
@@ -286,38 +293,9 @@ export class Service<
     };
   }
 
-  start(
-    initialState: TState | null,
-  ): Service<TContext, TEvent, TState> {
-    if (initialState) {
-      const resolved =
-        typeof initialState === 'object'
-          ? initialState
-          : { context: this._machine.config.context!, value: initialState };
-      this.state = {
-        value: resolved.value,
-        actions: [],
-        context: resolved.context,
-        // matches: createMatcher(resolved.value),
-        changed: false,
-      };
-
-      if (!IS_PRODUCTION) {
-        if (!(this.state.value in this._machine.config.states)) {
-          throw new Error(
-            `Cannot start service in state '${
-              this.state.value
-            }'. The state is not found on machine${
-              this._machine.config.id ? ` '${this._machine.config.id}'` : ''
-            }.`
-          );
-        }
-      }
-    } else {
-      this.state = this._machine.initialState;
-    }
+  start(): Service<TContext, TEvent, TState> {
     this.status = InterpreterStatus.Running;
-    executeStateActions(this.state, INIT_EVENT);
+    executeStateActions<TContext, TEvent, TState>(this.state, INIT_EVENT);
     return this;
   }
 
@@ -328,29 +306,17 @@ export class Service<
   }
 }
 
-export function interpret<
-  TContext extends Map<string,string>,
-  TEvent extends EventObject,
-  TState extends Typestate<TContext>,
->(
-  machine: StateMachine.Machine<TContext, TEvent, TState>
-): StateMachine.Service<TContext, TEvent, TState> {
-  const service = new Service(machine);
-  return service;
-}
-
-
-// Define a Map with number keys and GenericValue<T> values
-class MachinesMap<
+// Define a Map for services
+class ServiceMap<
   TContext extends Map<string,string>,
   TEvent extends EventObject,
   TState extends Typestate<TContext>,
 > {
   counter: i32 = 0;
   private _keys: i32[] = [];
-  private _values: StateMachine.Machine<TContext, TEvent, TState>[] = [];
+  private _values: Service<TContext, TEvent, TState>[] = [];
 
-  set(value: StateMachine.Machine<TContext, TEvent, TState>): i32 {
+  set(value: Service<TContext, TEvent, TState>): i32 {
     const key = this.counter;
     this.counter += 1;
     const index = this._keys.indexOf(key);
@@ -363,7 +329,7 @@ class MachinesMap<
     return key;
   }
 
-  get(key: i32): StateMachine.Machine<TContext, TEvent, TState> | null {
+  get(key: i32): Service<TContext, TEvent, TState> | null {
     const index = this._keys.indexOf(key);
     if (index > -1) {
       return this._values[index];
@@ -398,9 +364,11 @@ export class Machine<
     const value = state.value;
     const context = state.context;
     const eventObject = event;
+    console.log("----transition-value-" + value);
     console.log("----transition-config.states-" + this.config.states.keys().join(","));
     const stateConfig = this.config.states.get(value);
     console.log("----transition-stateConfig-" + stateConfig.on.keys().join(","));
+    console.log("--eventObject.type--" + eventObject.type);
 
     if (!IS_PRODUCTION && !stateConfig) {
       throw new Error(
@@ -514,9 +482,9 @@ export class Machine<
   }
 }
 
-const map = new MachinesMap<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>();
+const map = new ServiceMap<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>();
 
-export function createMachine(
+export function create(
   _fsmConfig: ArrayBuffer,
   _implementations: ArrayBuffer,
 ): i32 {
@@ -569,30 +537,54 @@ export function createMachine(
   // }
 
   const machine = _createMachine<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>(fsmConfig, implementations);
-  return map.set(machine);
+
+  const service = new Service<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>(machine);
+
+  service.start();
+  return map.set(service);
 }
 
-export function getCurrentState(id: i32, keyBuf: ArrayBuffer): ArrayBuffer {
-  const machine = map.get(id);
-  if (!machine) return String.UTF8.encode("no machine");
-  const ctx = machine.config.context;
-  if (!ctx) return String.UTF8.encode("no ctx");
+export function getCurrentState(id: i32): ArrayBuffer {
+  const service = map.get(id);
+  if (!service) throw new Error("no service");
+  return String.UTF8.encode(service.state.value);
+}
+
+export function getContextValue(id: i32, keyBuf: ArrayBuffer): ArrayBuffer {
+  const service = map.get(id);
+  if (!service) throw new Error("no service");
+  const ctx = service.state.context;
+  if (!ctx) throw new Error("no ctx");
+  console.log("--getContext--" + ctx.keys().join(","));
   const key = String.UTF8.decode(keyBuf);
   return String.UTF8.encode(ctx.get(key));
 }
 
+// TODO remove this
 export function transition(id: i32, stateValueBuf: ArrayBuffer, eventNameBuf: ArrayBuffer): ArrayBuffer {
-  const machine = map.get(id);
-  if (!machine) return String.UTF8.encode("no machine");
+  const service = map.get(id);
+  if (!service) throw new Error("no service");
 
   const stateValue = String.UTF8.decode(stateValueBuf);
   const eventName = String.UTF8.decode(eventNameBuf);
   console.log("----transition--" + stateValue + " - " + eventName);
-  const state = new State<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>(stateValue, machine.config.context, [], false);
+  const state = new State<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>(stateValue, service.machine.config.context, [], false);
   const event: EventObject = new EventClass(eventName);
-  const nextState = machine.transition(state, event);
+  const nextState = service.machine.transition(state, event);
   console.log("----nextState-" + nextState.value)
   return String.UTF8.encode(nextState.value);
+}
+
+export function run(
+  id: i32,
+  eventNameBuf: ArrayBuffer,
+): void {
+  const service = map.get(id);
+  if (!service) throw new Error("no service");
+  const eventName = String.UTF8.decode(eventNameBuf);
+  console.log("--run--transition--" + eventName);
+  const event: EventObject = new EventClass(eventName);
+  service.send(event);
 }
 
 function mergeMap<T>(original: Map<string,T>, additional: Map<string,T>): Map<string,T> {

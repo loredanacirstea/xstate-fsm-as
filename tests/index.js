@@ -1,44 +1,9 @@
 import assert from "assert";
-import { createMachine, getCurrentState, transition } from "../build/debug.js";
-// assert.strictEqual(add(1, 2), 3);
-// console.log("ok");
+import { create, getCurrentState, getContextValue, transition, run } from "../build/debug.js";
+
+let currentState, value;
 
 const machineConfig = {
-    id: "Semaphore",
-    context: {},
-    initial: "red",
-    states: {
-      "red": {
-        on: {
-          next: {
-            target: "blue",
-          },
-        },
-        exit: [],
-        entry: [],
-      },
-      "blue": {
-        on: {
-          next: {
-            target: "white",
-          },
-        },
-        exit: [],
-        entry: [],
-      },
-      "white": {
-        on: {
-          next: {
-            target: "red",
-          },
-        },
-        exit: [],
-        entry: [],
-      },
-    },
-}
-
-const machineConfig2 = {
     id: "Semaphore",
     initial: "red",
     // context: {state: "red"},
@@ -69,35 +34,29 @@ const machineConfig2 = {
 }
 const implementations = {actions: {}};
 
-const machineConfigStr = JSON.stringify(machineConfig2);
+const machineConfigStr = JSON.stringify(machineConfig);
 const implementationsStr = JSON.stringify(implementations);
-const machineId = createMachine(encodeToUtf8Array(machineConfigStr), encodeToUtf8Array(implementationsStr));
+const machineId = create(encodeToUtf8Array(machineConfigStr), encodeToUtf8Array(implementationsStr));
 console.log("!!!!!machineId", machineId)
 
 const nextState = transition(machineId, encodeToUtf8Array('blue'), encodeToUtf8Array('next'));
-console.log("!!!!!nextState", nextState, decodeFromUtf8Array(nextState))
+console.log("!!!!!!! -> next", decodeFromUtf8Array(nextState))
 // assert.strictEqual(nextState.value, 'red');
 assert.strictEqual(decodeFromUtf8Array(nextState), 'red');
 
-// let currentState = getCurrentState(machineId);
-// console.log("!!!!!currentState", currentState)
-// assert.strictEqual(decodeFromUtf8Array(currentState), "blue");
+currentState = getCurrentState(machineId);
+console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
+assert.strictEqual(decodeFromUtf8Array(currentState), "red");
 
-// const nextState = transition(machineId, 'green', 'TIMER');
+run(machineId, encodeToUtf8Array("next"));
+console.log("!!!!!!! -> next");
+currentState = getCurrentState(machineId);
+console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
+assert.strictEqual(decodeFromUtf8Array(currentState), "blue");
 
-
-// expect(nextState.value).toEqual('yellow');
-// expect(nextState.actions.map((action) => action.type)).toEqual([
-//     'exitGreen',
-//     'g-y 1',
-//     'g-y 2'
-// ]);
-// expect(nextState.context).toEqual({
-//     count: 2,
-//     foo: 'static++',
-//     go: false
-// });
-
+// value = getContextValue(machineId, encodeToUtf8Array('value'));
+// console.log("!!!!!getContextValue", decodeFromUtf8Array(value))
+// assert.strictEqual(decodeFromUtf8Array(value), "blue");
 
 export function encodeToUtf8Array(str) {
     const encoder = new TextEncoder();
