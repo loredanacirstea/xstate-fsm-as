@@ -81,11 +81,13 @@ export namespace StateMachine {
     TContext extends Map<string,string>,
     TEvent extends EventObject
   > {
+    // type: string;
+    // exec: ActionFunction<TContext, TEvent> | null;
+    // assignment: PropertyAssigner<TContext> | null;
+    // assignmentFn: PropertyAssignerFn<TContext, TEvent> | null;
+    // properties: Map<string,string>
     type: string;
-    exec: ActionFunction<TContext, TEvent> | null;
-    assignment: PropertyAssigner<TContext> | null;
-    assignmentFn: PropertyAssignerFn<TContext, TEvent> | null;
-    properties: Map<string,any>
+    params: Array<ActionParam>
   }
 
   export type ActionFunction<
@@ -112,7 +114,7 @@ export namespace StateMachine {
     TStateValue extends string = string
   > {
     target: TStateValue;
-    actions: Array<Action<TContext, TEvent>>;
+    actions: Array<ActionObject<TContext, TEvent>>;
     cond: ((context: TContext, event: TEvent) => boolean) | null;
   }
 
@@ -241,22 +243,28 @@ export interface UnsubscribeReturnValue {
 
 // @ts-ignore
 @serializable
+export class ActionParam {
+  key: string;
+  value: string;
+
+  constructor(key: string, value: string) {
+    this.key = key;
+    this.value = value;
+  }
+}
+
+// @ts-ignore
+@serializable
 export class ActionObject<
   TContext extends Map<string,string>,
   TEvent extends EventObject
 > implements StateMachine.ActionObject<TContext, TEvent>{
   type: string;
-  exec: StateMachine.ActionFunction<TContext, TEvent> | null;
-  properties: Map<string,string>
-  assignment: StateMachine.PropertyAssigner<TContext> | null;
-  assignmentFn: StateMachine.PropertyAssignerFn<TContext, TEvent> | null;
+  params: Array<ActionParam>
 
-  constructor(type: string, exec: StateMachine.ActionFunction<TContext, TEvent> | null, properties: Map<string,string>) {
+  constructor(type: string, params: Array<ActionParam>) {
     this.type = type;
-    this.exec = exec;
-    this.properties = properties;
-    this.assignment = new Map();
-    this.assignmentFn = null;
+    this.params = params;
   }
 }
 
@@ -338,12 +346,12 @@ export class Transition<
   TStateValue extends string = string
 > implements StateMachine.Transition<TContext, TEvent, string>{
   target: TStateValue;
-  actions: Array<StateMachine.Action<TContext, TEvent>>;
+  actions: Array<StateMachine.ActionObject<TContext, TEvent>>;
   cond: ((context: TContext, event: TEvent) => boolean) | null;
 
   constructor(
     target: TStateValue,
-    actions: Array<StateMachine.Action<TContext, TEvent>>,
+    actions: Array<StateMachine.ActionObject<TContext, TEvent>>,
     cond: ((context: TContext, event: TEvent) => boolean) | null,
   ) {
     this.target = target;
@@ -361,13 +369,13 @@ export class TransitionExternal<
 > {
   name: string;
   target: TStateValue;
-  actions: Array<ActionClass<TContext, TEvent>>;
+  actions: Array<ActionObject<TContext, TEvent>>;
   cond: ((context: TContext, event: TEvent) => boolean) | null;
 
   constructor(
     name: string,
     target: TStateValue,
-    actions: Array<ActionClass<TContext, TEvent>>,
+    actions: Array<ActionObject<TContext, TEvent>>,
     cond: ((context: TContext, event: TEvent) => boolean) | null,
   ) {
     this.name = name;
@@ -447,6 +455,18 @@ export class StateInfoClassExternal<
 
 // @ts-ignore
 @serializable
+export class ContextParam {
+  key: string;
+  value: string;
+
+  constructor(key: string, value: string) {
+    this.key = key;
+    this.value = value;
+  }
+}
+
+// @ts-ignore
+@serializable
 export class ConfigExternal<
   TContext extends Map<string,string>,
   TEvent extends EventObject,
@@ -454,13 +474,13 @@ export class ConfigExternal<
 > {
   id: string;
   initial: string;
-  context: TContext | null;
+  context: Array<ContextParam>;
   states: Array<StateInfoClassExternal<TContext, TEvent>>;
 
   constructor(
     id: string,
     initial: string,
-    context: TContext | null,
+    context: Array<ContextParam>,
     states: Array<StateInfoClassExternal<TContext, TEvent>>,
   ) {
     this.id = id;

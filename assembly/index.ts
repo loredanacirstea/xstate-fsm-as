@@ -23,6 +23,8 @@ import {
   StateInfoEvents,
   Transition,
   EventClass,
+  ActionParam,
+  ContextParam,
   // ActionMap,
 } from './types';
 
@@ -73,28 +75,28 @@ export function assign2<TC extends object, TE extends EventObject = EventObject>
   };
 }
 
-function toActionObjectFromString<
-  TContext extends Map<string,string>,
-  TEvent extends EventObject
->(
-  action: string,
-  actionMap: StateMachine.ActionMap<TContext, TEvent>
-): StateMachine.ActionObject<TContext, TEvent> {
-  // TODO fixme
-  // const actionfn = (actionMap && actionMap.has(action)) ? actionMap.get(action): null;
-  const actionfn: StateMachine.ActionFunction<TContext, TEvent> | null = null;
-  return new ActionObject<TContext, TEvent>(action, actionfn, actionMap)
-}
+// function toActionObjectFromString<
+//   TContext extends Map<string,string>,
+//   TEvent extends EventObject
+// >(
+//   action: string,
+//   actionMap: StateMachine.ActionMap<TContext, TEvent>
+// ): StateMachine.ActionObject<TContext, TEvent> {
+//   // TODO fixme
+//   // const actionfn = (actionMap && actionMap.has(action)) ? actionMap.get(action): null;
+//   const actionfn: StateMachine.ActionFunction<TContext, TEvent> | null = null;
+//   return new ActionObject<TContext, TEvent>(action, actionfn, actionMap)
+// }
 
-function toActionObject<
-  TContext extends Map<string,string>,
-  TEvent extends EventObject
->(
-  action: StateMachine.ActionFunction<TContext, TEvent>,
-  actionMap: StateMachine.ActionMap<TContext, TEvent>
-): ActionObject<TContext, TEvent> {
-  return new ActionObject<TContext, TEvent>(action.name, action, actionMap)
-}
+// function toActionObject<
+//   TContext extends Map<string,string>,
+//   TEvent extends EventObject
+// >(
+//   action: StateMachine.ActionFunction<TContext, TEvent>,
+//   actionMap: StateMachine.ActionMap<TContext, TEvent>
+// ): ActionObject<TContext, TEvent> {
+//   return new ActionObject<TContext, TEvent>(action.name, action, actionMap)
+// }
 
 const IS_PRODUCTION = nodeEnv() === 'production';
 
@@ -125,6 +127,7 @@ function handleActions<
   context: TContext,
   eventObject: TEvent
 ): HandledActions<TContext, TEvent> {
+  console.log("--handleActions--ctx-" + context.keys().join(","))
   let nextContext = context;
   let assigned = false;
   const nonAssignActions: StateMachine.ActionObject<TContext, TEvent>[] = [];
@@ -134,27 +137,28 @@ function handleActions<
     if (action.type === ASSIGN_ACTION) {
       assigned = true;
       let tmpContext: TContext = mergeMap<string>(nextContext, new Map());
+      console.log("--handleActions--tmpContext-" + tmpContext.keys().join(","))
 
-      const aassign = action.assignment;
+      // const aassign = action.assignment;
 
-      // TODO
-      if (action.assignmentFn) {
-        // tmpContext = action.assignmentFn(nextContext, eventObject);
-      } else if (aassign) {
-        const keys = aassign.keys();
-        for (let i = 0; i < keys.length; i++) {
-          const key = keys[i];
-          const value = aassign.get(key);
-          tmpContext.set(key, value);
-        }
-        // aassign.keys().forEach((key: string) => {
-          // const value = typeof assign.get(key) === 'function'
-          //     ? assign.get(key)(nextContext, eventObject)
-          //     : assign.get(key);
-        //   const value = aassign.get(key);
-        //   tmpContext.set(key, value);
-        // });
-      }
+      // // TODO
+      // if (action.assignmentFn) {
+      //   // tmpContext = action.assignmentFn(nextContext, eventObject);
+      // } else if (aassign) {
+      //   const keys = aassign.keys();
+      //   for (let i = 0; i < keys.length; i++) {
+      //     const key = keys[i];
+      //     const value = aassign.get(key);
+      //     tmpContext.set(key, value);
+      //   }
+      //   // aassign.keys().forEach((key: string) => {
+      //     // const value = typeof assign.get(key) === 'function'
+      //     //     ? assign.get(key)(nextContext, eventObject)
+      //     //     : assign.get(key);
+      //   //   const value = aassign.get(key);
+      //   //   tmpContext.set(key, value);
+      //   // });
+      // }
 
       nextContext = tmpContext;
       // return false;
@@ -163,6 +167,7 @@ function handleActions<
     // return true;
     nonAssignActions.push(action);
   }
+  console.log("--handleActions--nextContext-" + nextContext.keys().join(","))
 
   // return {actions: nonAssignActions, ctx: nextContext, assigned};
   return new HandledActions(nonAssignActions, nextContext, assigned);
@@ -185,17 +190,17 @@ function _createMachine<
   fsmConfig: Config<TContext, TEvent, TState>,
   implementations: Implementations<TContext, TEvent>
 ): Machine<TContext, TEvent, TState> {
-  const entries = fsmConfig.states.get(fsmConfig.initial).entry;
+  // const entries = fsmConfig.states.get(fsmConfig.initial).entry;
   const iniactions:  StateMachine.ActionObject<TContext, TEvent>[] = [];
-  for (let i = 0; i < entries.length; i++) {
-    const action = entries[i];
-    const actionfn = action.actionFn;
-    if (actionfn !== null) {
-      iniactions.push(
-        toActionObject<TContext, TEvent>(actionfn, implementations.actions)
-      );
-    }
-  }
+  // for (let i = 0; i < entries.length; i++) {
+  //   const action = entries[i];
+  //   const actionfn = action.actionFn;
+  //   if (actionfn !== null) {
+  //     iniactions.push(
+  //       toActionObject<TContext, TEvent>(actionfn, implementations.actions)
+  //     );
+  //   }
+  // }
   const res = handleActions(
     // iniactions.map((action: StateMachine.Action<TContext, TEvent>) => {
     //   // return toActionObject(action, implementations.actions)
@@ -244,11 +249,35 @@ function executeStateActions<
 ): void {
   for (let i = 0; i < state.actions.length; i++) {
     const action = state.actions[i];
-    const exec = action.exec;
-    if (exec) {
-      exec(state.context, event);
+    // const exec = action.exec;
+    // if (exec) {
+    //   exec(state.context, event);
+    // }
+    if (event.type === "increment") {
+      const newctx = increment<TContext, TEvent, TState>(state.context, action.params);
+      state.context = newctx;
     }
+    // state.context
+    // action.type
+    // action.params
   }
+}
+
+function increment<
+  TContext extends Map<string,string>,
+  TEvent extends EventObject,
+  TState extends Typestate<TContext>,
+>(
+  ctx: TContext,
+  params: ActionParam[],
+): TContext {
+  for (let i = 0; i < params.length; i++) {
+    const value = parseInt(ctx.get(params[i].key), 10) + parseInt(params[i].value, 10);
+    let vstr = value.toString(10);
+    vstr = vstr.substring(0, vstr.length - 2);
+    ctx.set(params[i].key,  vstr);
+  }
+  return ctx;
 }
 
 
@@ -383,6 +412,9 @@ export class Machine<
     }
 
     if (stateConfig.on) {
+      if (!stateConfig.on.has(eventObject.type)) {
+        throw new Error("cannot apply event in current state")
+      }
       const transition = stateConfig.on.get(eventObject.type);
       console.log("----transition-target--" + transition.target)
       const transitions: Array<
@@ -431,36 +463,37 @@ export class Machine<
           //         .concat(nextStateConfig.entry)
           //         // .filter((a) => a)
           // )
-          let allActions: StateMachine.Action<TContext, TEvent>[] = [];
+          let allActions: StateMachine.ActionObject<TContext, TEvent>[] = [];
           if (!isTargetless) {
-            for (let i = 0; i < stateConfig.exit.length; i++) {
-              allActions.push(stateConfig.exit[i]);
-            }
+            // for (let i = 0; i < stateConfig.exit.length; i++) {
+            //   allActions.push(stateConfig.exit[i]);
+            // }
             for (let i = 0; i < actions.length; i++) {
               allActions.push(actions[i]);
             }
-            for (let i = 0; i < stateConfig.exit.length; i++) {
-              allActions.push(nextStateConfig.entry[i]);
-            }
+            // for (let i = 0; i < stateConfig.exit.length; i++) {
+            //   allActions.push(nextStateConfig.entry[i]);
+            // }
             // allActions = allActions.concat(stateConfig.exit);
             // allActions = allActions.concat(nextStateConfig.entry);
           }
 
-          const allActionObjects: StateMachine.ActionObject<TContext, TEvent>[] = [];
+          // const allActionObjects: StateMachine.ActionObject<TContext, TEvent>[] = [];
 
-          for (let i = 0; i < allActions.length; i++) {
-            const action = allActions[i];
-            const actionFn = action.actionFn;
-            if (actionFn) {
-              const obj = toActionObject<TContext, TEvent>(actionFn, this.options.actions);
-              allActionObjects.push(obj);
-            }
-            const obj = toActionObjectFromString<TContext, TEvent>(action.value, this.options.actions);
-            allActionObjects.push(obj);
-          }
+          // for (let i = 0; i < allActions.length; i++) {
+          //   const action = allActions[i];
+          //   const actionFn = action.actionFn;
+          //   if (actionFn) {
+          //     const obj = toActionObject<TContext, TEvent>(actionFn, this.options.actions);
+          //     allActionObjects.push(obj);
+          //   }
+          //   const obj = toActionObjectFromString<TContext, TEvent>(action.value, this.options.actions);
+          //   allActionObjects.push(obj);
+          // }
 
           const res = handleActions(
-            allActionObjects,
+            // allActionObjects,
+            allActions,
             context,
             eventObject
           );
@@ -503,7 +536,7 @@ export function create(
     for (let j = 0; j < state.on.length; j++) {
       const onobj = state.on[j];
       console.log("----onobj--" + state.name);
-      const onobjActions: StateMachine.Action<ContextGeneral<string>, EventObject>[] = [];
+      const onobjActions: StateMachine.ActionObject<ContextGeneral<string>, EventObject>[] = [];
       if (onobj.actions) {
         for (let x = 0; x < onobj.actions.length; x++) {
           const act = onobj.actions[x];
@@ -515,7 +548,12 @@ export function create(
     states.set(state.name, new StateInfoClass<ContextGeneral<string>, EventObject>(stateOn, state.exit, state.entry));
   }
 
-  console.log("----config3");
+  console.log("----config3-" + fsmConfigExternal.context.length.toString());
+
+  for (let i = 0; i < fsmConfigExternal.context.length; i++) {
+    const param = fsmConfigExternal.context[i];
+    ctx.set(param.key, param.value);
+  }
 
   const fsmConfig = new Config<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>(
     fsmConfigExternal.id,
