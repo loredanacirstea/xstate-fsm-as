@@ -176,8 +176,13 @@ currentState = getCurrentState(machineId);
 console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
 assert.strictEqual(decodeFromUtf8Array(currentState), "locked");
 
-run(machineId, encodeToUtf8Array("increment"));
-console.log("!!!!!!! -> increment");
+console.log("!!!!!!! -> try increment");
+try {
+    run(machineId, encodeToUtf8Array("increment"));
+} catch (e) {
+    console.error(e);
+    assert.equal(e.message.includes("cannot apply event in current state"), true);
+}
 value = getContextValue(machineId, encodeToUtf8Array('counter'));
 console.log("!!!!!counter", decodeFromUtf8Array(value))
 assert.strictEqual(decodeFromUtf8Array(value), "1");
