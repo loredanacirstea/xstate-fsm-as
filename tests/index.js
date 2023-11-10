@@ -1,9 +1,24 @@
 import assert from "assert";
 // import { describe, it } from "test";
 // import { describe, it } from 'node:test';
-import { create, getCurrentState, getContextValue, transition, run } from "../build/debug.js";
+// import { create, getCurrentState, getContextValue, transition, run } from "../build/debug.js";
+import { load, LOG } from './wasmx.js';
 
 let currentState, value;
+
+function runFnWrapped (storage = {}) {
+    return async function (fnName, args) {
+        const argsStr = JSON.stringify({[fnName]: args});
+        console.log("-EXT-argsStr", argsStr);
+        const env = {
+            currentCall: {
+                callData: encodeToUtf8Array(argsStr),
+            }
+        }
+        const mainfn = await load(storage, env, LOG.error);
+        return mainfn();
+    }
+}
 
 let machineConfig = {
     id: "Semaphore",
@@ -34,32 +49,7 @@ let machineConfig = {
         },
     ],
 }
-const implementations = {actions: {}};
 
-let machineConfigStr = JSON.stringify(machineConfig);
-let implementationsStr = JSON.stringify(implementations);
-let machineId;
-
-
-machineId = create(encodeToUtf8Array(machineConfigStr), encodeToUtf8Array(implementationsStr));
-console.log("!!!!!machineId", machineId)
-
-let nextState = transition(machineId, encodeToUtf8Array('blue'), encodeToUtf8Array('next'));
-console.log("!!!!!!! -> next", decodeFromUtf8Array(nextState))
-assert.strictEqual(decodeFromUtf8Array(nextState), 'red');
-
-currentState = getCurrentState(machineId);
-console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
-assert.strictEqual(decodeFromUtf8Array(currentState), "red");
-
-run(machineId, encodeToUtf8Array("next"));
-console.log("!!!!!!! -> next");
-currentState = getCurrentState(machineId);
-console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
-assert.strictEqual(decodeFromUtf8Array(currentState), "blue");
-
-
-///// machine 2
 
 const machineConfig2 = {
     id: "Lock/unlock",
@@ -142,50 +132,100 @@ const machineConfig2Orig = {
     },
 }
 
-const implementations2 = {actions: {}};
+const implementations = {actions: {}};
 
-machineConfig = parseMachine(machineConfig2Orig);
-machineConfigStr = JSON.stringify(machineConfig);
-console.log("machineConfig", machineConfigStr);
-implementationsStr = JSON.stringify(implementations2);
+async function runTests() {
+    const storage = {};
+    let machineConfigStr = JSON.stringify(machineConfig);
+    let implementationsStr = JSON.stringify(implementations);
+    let machineId;
+    let result;
+    let runFn = runFnWrapped(storage);
 
-machineId = create(encodeToUtf8Array(machineConfigStr), encodeToUtf8Array(implementationsStr));
-console.log("!!!!!machineId", machineId)
+    // Create the machine
+    result = await runFn("create", machineConfig)
+    machineId = JSON.parse(decodeFromUtf8Array(result)).id;
+    assert.strictEqual(machineId, 0);
 
-currentState = getCurrentState(machineId);
-console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
-assert.strictEqual(decodeFromUtf8Array(currentState), "unlocked");
+    // Get initial state
+    result = await runFn("getCurrentState", {id: machineId});
+    console.log("!!!!!currentState", decodeFromUtf8Array(result))
+    currentState = decodeFromUtf8Array(result);
+    assert.strictEqual(currentState, "red");
 
-value = getContextValue(machineId, encodeToUtf8Array('counter'));
-console.log("!!!!!counter", decodeFromUtf8Array(value))
-assert.strictEqual(decodeFromUtf8Array(value), "0");
+    // Run next state
+    await runFn("run", {id: machineId, eventName: "next"});
+    console.log("!!!!!!! -> next");
 
-run(machineId, encodeToUtf8Array("increment"));
-console.log("!!!!!!! -> increment");
-currentState = getCurrentState(machineId);
-console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
-assert.strictEqual(decodeFromUtf8Array(currentState), "unlocked");
+    // Check state has changed
+    currentState = await runFn("getCurrentState", {id: machineId});
+    console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
+    assert.strictEqual(decodeFromUtf8Array(currentState), "blue");
 
-value = getContextValue(machineId, encodeToUtf8Array('counter'));
-console.log("!!!!!counter", decodeFromUtf8Array(value))
-assert.strictEqual(decodeFromUtf8Array(value), "1");
 
-run(machineId, encodeToUtf8Array("lock"));
-console.log("!!!!!!! -> lock");
-currentState = getCurrentState(machineId);
-console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
-assert.strictEqual(decodeFromUtf8Array(currentState), "locked");
+    ///// machine 2
 
-console.log("!!!!!!! -> try increment");
-try {
-    run(machineId, encodeToUtf8Array("increment"));
-} catch (e) {
-    console.error(e);
-    assert.equal(e.message.includes("cannot apply event in current state"), true);
+    const implementations2 = {actions: {}};
+
+    machineConfig = parseMachine(machineConfig2Orig);
+    implementationsStr = JSON.stringify(implementations2);
+
+    // Create the machine
+    result = await runFn("create", machineConfig)
+    machineId = JSON.parse(decodeFromUtf8Array(result)).id;
+    assert.strictEqual(machineId, 1);
+
+    // Get initial state
+    result = await runFn("getCurrentState", {id: machineId});
+    console.log("!!!!!currentState", decodeFromUtf8Array(result))
+    currentState = decodeFromUtf8Array(result);
+    assert.strictEqual(currentState, "unlocked");
+
+    // Get context value
+    result = await runFn("getContextValue", {id: machineId, key: "counter"});
+    console.log("!!!!!currentState", decodeFromUtf8Array(result))
+    currentState = decodeFromUtf8Array(result);
+    assert.strictEqual(currentState, "0");
+
+    // Run next state
+    await runFn("run", {id: machineId, eventName: "increment"});
+    console.log("!!!!!!! -> increment");
+
+    // Check state has changed
+    currentState = await runFn("getCurrentState", {id: machineId});
+    console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
+    assert.strictEqual(decodeFromUtf8Array(currentState), "unlocked");
+
+    // Get context value
+    result = await runFn("getContextValue", {id: machineId, key: "counter"});
+    console.log("!!!!!currentState", decodeFromUtf8Array(result))
+    currentState = decodeFromUtf8Array(result);
+    assert.strictEqual(currentState, "1");
+
+    // Run lock transition
+    await runFn("run", {id: machineId, eventName: "lock"});
+    console.log("!!!!!!! -> lock");
+
+    // Check state has been locked
+    currentState = await runFn("getCurrentState", {id: machineId});
+    console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
+    assert.strictEqual(decodeFromUtf8Array(currentState), "locked");
+
+    // Check no increment is possible
+    console.log("!!!!!!! -> try increment");
+    try {
+        await runFn("run", {id: machineId, eventName: "increment"});
+    } catch (e) {
+        console.error(e);
+        assert.equal(e.message.includes("cannot apply event in current state"), true);
+    }
+    result = await runFn("getContextValue", {id: machineId, key: "counter"});
+    console.log("!!!!!currentState", decodeFromUtf8Array(result))
+    currentState = decodeFromUtf8Array(result);
+    assert.strictEqual(currentState, "1");
 }
-value = getContextValue(machineId, encodeToUtf8Array('counter'));
-console.log("!!!!!counter", decodeFromUtf8Array(value))
-assert.strictEqual(decodeFromUtf8Array(value), "1");
+
+runTests();
 
 export function encodeToUtf8Array(str) {
     const encoder = new TextEncoder();
@@ -193,6 +233,7 @@ export function encodeToUtf8Array(str) {
 }
 
 export function decodeFromUtf8Array(arr) {
+    if (!(arr instanceof ArrayBuffer)) arr = new Uint8Array(arr).buffer;
     const encoder = new TextDecoder();
     return encoder.decode(arr);
 }

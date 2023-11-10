@@ -294,6 +294,58 @@ export class State<
   }
 }
 
+export class StateClass<
+  TContext extends Map<string,string>,
+  TEvent extends EventObject,
+  TState extends Typestate<TContext>
+> implements StateMachine.State<TContext, TEvent, TState> {
+  value: string;
+  context: TContext;
+  actions: Array<StateMachine.ActionObject<TContext, TEvent>>;
+  changed: boolean;
+  // matches: (value: string) => (stateValue: string) => boolean;
+
+  constructor(
+    value: string,
+    context: TContext,
+    actions: Array<StateMachine.ActionObject<TContext, TEvent>>,
+    changed: boolean,
+    // matches: (value: string) => (stateValue: string) => boolean,
+  ) {
+    this.value = value;
+    this.context = context;
+    this.actions = actions;
+    this.changed = changed;
+    // this.matches = matches;
+  }
+}
+
+// @ts-ignore
+@serializable
+export class StateClassExternal<
+  TContext extends Map<string,string>,
+  TEvent extends EventObject,
+  TState extends Typestate<TContext>
+> {
+  value: string;
+  context: Array<ContextParam>;
+  actions: Array<ActionObject<TContext, TEvent>>;
+  changed: boolean;
+  // matches: (value: string) => (stateValue: string) => boolean;
+
+  constructor(
+    value: string,
+    context: Array<ContextParam>,
+    actions: Array<ActionObject<TContext, TEvent>>,
+    changed: boolean,
+  ) {
+    this.value = value;
+    this.context = context;
+    this.actions = actions;
+    this.changed = changed;
+  }
+}
+
 // @ts-ignore
 @serializable
 export class AssignActionObject<
@@ -309,7 +361,7 @@ export class AssignActionObject<
     assignment: Map<string, string> | null,
     assignmentFn: ((context: TContext, event: TEvent) => string) | null,
   ) {
-    super(type, null, new Map());
+    super(type, []);
     this.type = type;
     this.assignment = assignment;
     this.assignmentFn = assignmentFn;
@@ -443,8 +495,8 @@ export class StateInfoClassExternal<
   constructor(
     name: string,
     on: Array<TransitionExternal<TContext, TEvent, string>>,
-    exit: Array<StateMachine.Action<TContext, TEvent>>,
-    entry: Array<StateMachine.Action<TContext, TEvent>>,
+    exit: Array<ActionClass<TContext, TEvent>>,
+    entry: Array<ActionClass<TContext, TEvent>>,
   ) {
     this.name = name;
     this.on = on;
