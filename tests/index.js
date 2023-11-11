@@ -132,6 +132,48 @@ const machineConfig2Orig = {
     },
 }
 
+const machineConfig3Orig = {
+    context: {
+      counter: "0",
+    },
+    id: "Untitled",
+    initial: "unlocked",
+    states: {
+      unlocked: {
+        on: {
+          lock: {
+            target: "locked",
+          },
+          increment: {
+            target: "unlocked",
+            actions: [
+              {
+                type: "increment",
+                params: {
+                  counter: "2",
+                },
+              },
+              {
+                type: "log",
+                params: {
+                  counter: "",
+                },
+                expr: "",
+              },
+            ],
+          },
+        },
+      },
+      locked: {
+        on: {
+          unlock: {
+            target: "unlocked",
+          },
+        },
+      },
+    },
+}
+
 const implementations = {actions: {}};
 
 async function runTests() {
@@ -144,6 +186,7 @@ async function runTests() {
 
     // Create the machine
     result = await runFn("create", machineConfig)
+    console.log("!!!!!create", decodeFromUtf8Array(result))
     machineId = JSON.parse(decodeFromUtf8Array(result)).id;
     assert.strictEqual(machineId, 0);
 
@@ -168,6 +211,8 @@ async function runTests() {
     const implementations2 = {actions: {}};
 
     machineConfig = parseMachine(machineConfig2Orig);
+    console.log("==machineConfig==")
+    console.log(JSON.stringify(machineConfig))
     implementationsStr = JSON.stringify(implementations2);
 
     // Create the machine
@@ -223,6 +268,27 @@ async function runTests() {
     console.log("!!!!!currentState", decodeFromUtf8Array(result))
     currentState = decodeFromUtf8Array(result);
     assert.strictEqual(currentState, "1");
+
+    ///// machine 3
+
+    machineConfig = parseMachine(machineConfig3Orig);
+    console.log("==machineConfig==")
+    console.log(JSON.stringify(machineConfig))
+    implementationsStr = JSON.stringify(implementations2);
+
+    // Create the machine
+    result = await runFn("create", machineConfig)
+    machineId = JSON.parse(decodeFromUtf8Array(result)).id;
+    assert.strictEqual(machineId, 2);
+
+    // Run next state
+    await runFn("run", {id: machineId, eventName: "increment"});
+    console.log("!!!!!!! -> increment");
+
+    // Check state has changed
+    currentState = await runFn("getCurrentState", {id: machineId});
+    console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
+    assert.strictEqual(decodeFromUtf8Array(currentState), "unlocked");
 }
 
 runTests();
@@ -254,11 +320,16 @@ function parseMachine(origConfig) {
             const stateon = Object.keys(state.on).map(eventName => {
                 const ev = state.on[eventName];
                 const actions = [];
-                if (ev.actions) {
+                let oactions = ev.actions;
+                if (!oactions) oactions = [];
+                if (oactions instanceof Object && !(oactions instanceof Array)) {
+                    oactions = [oactions];
+                }
+                for (let i = 0; i < oactions.length; i++) {
                     const action = {
-                        ...ev.actions,
-                        params: Object.keys(ev.actions.params).map(stateName => {
-                            return {key: stateName, value: ev.actions.params[stateName]};
+                        ...oactions[i],
+                        params: Object.keys(oactions[i].params).map(stateName => {
+                            return {key: stateName, value: oactions[i].params[stateName]};
                         })
                     }
                     actions.push(action);

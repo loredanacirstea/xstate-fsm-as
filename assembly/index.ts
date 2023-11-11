@@ -8,7 +8,8 @@ import {
   createInternal,
   getContextValueInternal,
 } from './machine';
-import * as wasmx from './wasmx_wrap';
+import * as wasmx from './wasmx';
+import * as wasmxwrap from './wasmx_wrap';
 import {arrayBufferToU8Array} from './utils';
 import {
   ContextGeneral,
@@ -21,24 +22,23 @@ export function wasmx_env_2(): void {}
 export function instantiate_(): void {}
 
 export function main(): u8[] {
-    const calldata = wasmx.getCallDataWrap<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>();
+    console.log("===main===")
+    let result: ArrayBuffer;
+    const calldata = wasmxwrap.getCallDataWrap<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>();
     if (calldata.run !== null) {
-      const res = runInternal(calldata.run!.id, calldata.run!.eventName);
-      return arrayBufferToU8Array(res);
+      result = runInternal(calldata.run!.id, calldata.run!.eventName);
+    } else if (calldata.create !== null) {
+      result = createInternal<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>(calldata.create!, null);
+    } else if (calldata.getCurrentState !== null) {
+      result = getCurrentState(calldata.getCurrentState!.id);
+    } else if (calldata.getContextValue !== null) {
+      result = getContextValueInternal(calldata.getContextValue!.id, calldata.getContextValue!.key);
+    } else {
+      wasmx.revert(String.UTF8.encode("invalid function call data"));
+      throw new Error("invalid function call data");
     }
-    if (calldata.create !== null) {
-      const res = createInternal<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>(calldata.create!, null);
-      return arrayBufferToU8Array(res);
-    }
-    if (calldata.getCurrentState !== null) {
-      const res = getCurrentState(calldata.getCurrentState!.id);
-      return arrayBufferToU8Array(res);
-    }
-    if (calldata.getContextValue !== null) {
-      const res = getContextValueInternal(calldata.getContextValue!.id, calldata.getContextValue!.key);
-      return arrayBufferToU8Array(res);
-    }
-    return [];
+    wasmx.finish(result);
+    return arrayBufferToU8Array(result);
 }
 
 export function create(

@@ -1,5 +1,6 @@
 import { JSON } from "json-as/assembly";
-import * as wasmx from './wasmx_wrap';
+import * as wasmxwrap from './wasmx_wrap';
+import * as wasmx from './wasmx';
 
 import {
   // ContextFrom,
@@ -258,6 +259,11 @@ function executeStateActions<
     if (event.type === "increment") {
       const newctx = increment<TContext, TEvent, TState>(state.context, action.params);
       state.context = newctx;
+      return;
+    }
+    if (event.type === "log") {
+        const newctx = log<TContext, TEvent, TState>(state.context, action.params);
+        state.context = newctx;
     }
     // state.context
     // action.type
@@ -278,6 +284,23 @@ function increment<
     let vstr = value.toString(10);
     vstr = vstr.substring(0, vstr.length - 2);
     ctx.set(params[i].key,  vstr);
+  }
+  return ctx;
+}
+
+function log<
+  TContext extends Map<string,string>,
+  TEvent extends EventObject,
+  TState extends Typestate<TContext>,
+>(
+  ctx: TContext,
+  params: ActionParam[],
+): TContext {
+  for (let i = 0; i < params.length; i++) {
+    const key = params[i].key;
+    const message = params[i].value;
+    const value = ctx.get(key);
+    console.log(`${key}: ${value} - ${message}`);
   }
   return ctx;
 }
@@ -607,20 +630,9 @@ export class Machine<
     console.log("----transition-stateConfig-" + stateConfig.on.keys().join(","));
     console.log("--eventObject.type--" + eventObject.type);
 
-    if (!IS_PRODUCTION && !stateConfig) {
-      throw new Error(
-        `State '${value}' not found on machine ${this.config.id || ''}`
-      );
-    }
-
-    if (!IS_PRODUCTION && eventObject.type === WILDCARD) {
-      throw new Error(
-        `An event cannot have the wildcard type ('${WILDCARD}')`
-      );
-    }
-
     if (stateConfig.on) {
       if (!stateConfig.on.has(eventObject.type)) {
+        wasmx.revert(String.UTF8.encode("cannot apply event in current state"));
         throw new Error("cannot apply event in current state")
       }
       const transition = stateConfig.on.get(eventObject.type);
@@ -654,13 +666,6 @@ export class Machine<
 
         console.log("----transition-nextStateConfig--" + nextStateConfig.on.keys().join(","))
 
-        if (!IS_PRODUCTION && !nextStateConfig) {
-          throw new Error(
-            `State '${nextStateValue}' not found on machine ${
-              this.config.id || ''
-            }`
-          );
-        }
         console.log("----transition-cond--" + cond.toString())
         if (cond(context, eventObject)) {
           // const allActions: StateMachine.Action<TContext, TEvent>[] = (
@@ -814,7 +819,7 @@ export function createInternal<
     console.log("--_createMachine--data-- " + data);
 
   // store service context
-    const id = wasmx.createService(data);
+    const id = wasmxwrap.createService(data);
     console.log("--_createMachine--id-- " + id.toString());
   return String.UTF8.encode(`{"id":${id}}`);
 }
@@ -822,7 +827,10 @@ export function createInternal<
 export function getCurrentState(id: i32): ArrayBuffer {
   const service = loadServiceFromId<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>(id);
   console.log("-getCurrentState-service-loaded-")
-  if (!service) throw new Error("no service");
+  if (!service) {
+    wasmx.revert(String.UTF8.encode("no service"));
+    throw new Error("no service");
+  }
   return String.UTF8.encode(service.state.value);
 }
 
@@ -833,9 +841,15 @@ export function getContextValue(id: i32, keyBuf: ArrayBuffer): ArrayBuffer {
 
 export function getContextValueInternal(id: i32, key: string): ArrayBuffer {
     const service = loadServiceFromId<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>(id);
-    if (!service) throw new Error("no service");
+    if (!service) {
+        wasmx.revert(String.UTF8.encode("no service"));
+        throw new Error("no service");
+    }
     const ctx = service.state.context;
-    if (!ctx) throw new Error("no ctx");
+    if (!ctx) {
+        wasmx.revert(String.UTF8.encode("no ctx"));
+        throw new Error("no ctx");
+    }
     console.log("--getContext--" + ctx.keys().join(","));
     return String.UTF8.encode(ctx.get(key));
 }
@@ -843,7 +857,10 @@ export function getContextValueInternal(id: i32, key: string): ArrayBuffer {
 // TODO remove this
 export function transition(id: i32, stateValueBuf: ArrayBuffer, eventNameBuf: ArrayBuffer): ArrayBuffer {
   const service = loadServiceFromId<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>(id);
-  if (!service) throw new Error("no service");
+  if (!service) {
+    wasmx.revert(String.UTF8.encode("no service"));
+    throw new Error("no service");
+  }
 
   const stateValue = String.UTF8.decode(stateValueBuf);
   const eventName = String.UTF8.decode(eventNameBuf);
@@ -865,7 +882,10 @@ export function run(
 
 export function runInternal(id: i32, eventName: string): ArrayBuffer {
     const service = loadServiceFromId<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>(id);
-    if (!service) throw new Error("no service");
+    if (!service) {
+        wasmx.revert(String.UTF8.encode("no service"));
+        throw new Error("no service");
+    }
     console.log("--run--transition--" + eventName);
     const event: EventObject = new EventClass(eventName);
     service.send(event);
@@ -901,7 +921,7 @@ export function saveService<
 > (id: i32, service: Service<TContext, TEvent, TState>): void {
     const serviceJson = ServiceExternal.fromInternal(service);
     const data = JSON.stringify<ServiceExternal<TContext, TEvent, TState>>(serviceJson);
-    wasmx.storeService(id, data);
+    wasmxwrap.storeService(id, data);
 }
 
 export function loadServiceFromId<
@@ -909,7 +929,7 @@ export function loadServiceFromId<
     TEvent extends EventObject,
     TState extends Typestate<TContext>,
 > (id: i32): Service<TContext, TEvent, TState> {
-    const serviceData = wasmx.loadService(id);
+    const serviceData = wasmxwrap.loadService(id);
     const service = JSON.parse<ServiceExternal<TContext, TEvent, TState>>(serviceData);
     return service.toInternal();
 }
