@@ -29,11 +29,25 @@ async function instantiate(module, imports = {}) {
         key = __liftBuffer(key >>> 0);
         return __lowerBuffer(__module0.storageLoad(key)) || __notnull();
       },
+      revert(message) {
+        // assembly/wasmx/revert(~lib/arraybuffer/ArrayBuffer) => void
+        message = __liftBuffer(message >>> 0);
+        __module0.revert(message);
+      },
       storageStore(key, value) {
         // assembly/wasmx/storageStore(~lib/arraybuffer/ArrayBuffer, ~lib/arraybuffer/ArrayBuffer) => void
         key = __liftBuffer(key >>> 0);
         value = __liftBuffer(value >>> 0);
         __module0.storageStore(key, value);
+      },
+      getCaller() {
+        // assembly/wasmx/getCaller() => ~lib/arraybuffer/ArrayBuffer
+        return __lowerBuffer(__module0.getCaller()) || __notnull();
+      },
+      finish(value) {
+        // assembly/wasmx/finish(~lib/arraybuffer/ArrayBuffer) => void
+        value = __liftBuffer(value >>> 0);
+        __module0.finish(value);
       },
     }),
   };

@@ -5,6 +5,7 @@ import {
     EventObject,
     Typestate,
 } from './types';
+import { uint8ArrayToHex } from "./utils";
 
 // @ts-ignore
 @serializable
@@ -61,6 +62,13 @@ export function getCallDataWrap<
     return calld;
 }
 
+export function getCaller(): string {
+    console.log("--getCaller--")
+    const callerbuf = wasmx.getCaller();
+    console.log("--callerbuf-- " + callerbuf.byteLength.toString());
+    return uint8ArrayToHex(Uint8Array.wrap(callerbuf));
+}
+
 export function sstore(key: string, value: string): void {
     wasmx.storageStore(String.UTF8.encode(key), String.UTF8.encode(value));
 }
@@ -78,6 +86,14 @@ export function intToString(value: i32): string {
 
 export function storeCounter(value: i32): void {
     sstore("counter", intToString(value));
+}
+
+export function storeOwner(id: i32, owner: string): void {
+    sstore("owner" + id.toString(), owner);
+}
+
+export function loadOwner(id: i32): string {
+    return sload("owner" + id.toString());
 }
 
 export function loadCounter(): i32 {

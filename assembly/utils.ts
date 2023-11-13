@@ -8,3 +8,7 @@ export function arrayBufferToU8Array(buffer: ArrayBuffer): u8[] {
     }
     return u8Array;
 }
+
+export function uint8ArrayToHex(arr: Uint8Array): string {
+    return arr.reduce((accum: string, v: u8) => accum + v.toString(16).padStart(2, '0'), "");
+}

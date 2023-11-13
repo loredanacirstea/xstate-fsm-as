@@ -1,5 +1,6 @@
 export declare function getEnv(): ArrayBuffer
 export declare function getCallData(): ArrayBuffer
+export declare function getCaller(): ArrayBuffer
 
 export declare function storageStore(key: ArrayBuffer, value: ArrayBuffer): void
 export declare function storageLoad(key: ArrayBuffer): ArrayBuffer

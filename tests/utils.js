@@ -27,8 +27,9 @@ export function parseMachine(origConfig) {
                 }
 
                 return {
-                    name: eventName,
-                    target: ev.target,
+                    name: eventName || "",
+                    target: ev.target || "",
+                    guard: ev.guard || "",
                     actions,
                 }
             })

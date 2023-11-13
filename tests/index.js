@@ -7,16 +7,21 @@ import { parseMachine } from './utils.js';
 
 let currentState, value;
 
-function runFnWrapped (storage = {}) {
+function runFnWrapped (storage = {}, env = {}) {
     return async function (fnName, args) {
         const argsStr = JSON.stringify({[fnName]: args});
         console.log("-EXT-argsStr", argsStr);
-        const env = {
+        // const defaultSender = new Uint8Array([31,31]);
+        const defaultSender = encodeToUtf8Array("sender");
+        env = {
+            ...env,
             currentCall: {
+                sender: defaultSender,
+                ...env.currentCall,
                 callData: encodeToUtf8Array(argsStr),
             }
         }
-        const mainfn = await load(storage, env, LOG.error);
+        const mainfn = await load(storage, env, LOG.debug);
         return mainfn();
     }
 }
@@ -32,6 +37,7 @@ let machineConfig = {
                 {
                     name: "next",
                     target: "blue",
+                    guard: "",
                 },
             ],
             exit: [],
@@ -43,6 +49,7 @@ let machineConfig = {
                 {
                     name: "next",
                     target: "red",
+                    guard: "",
                 },
             ],
             exit: [],
@@ -63,9 +70,12 @@ const machineConfig2 = {
                 {
                     name: "lock",
                     target: "lock",
+                    guard: "",
                 },
                 {
                     name: "set",
+                    target: "",
+                    guard: "",
                     actions: [
                         {
                             value: "counter",
@@ -75,6 +85,8 @@ const machineConfig2 = {
                 },
                 {
                     name: "increment",
+                    target: "",
+                    guard: "",
                     actions: [
                         {
                             value: "counter",
@@ -92,6 +104,7 @@ const machineConfig2 = {
                 {
                     name: "unlock",
                     target: "unlock",
+                    guard: "",
                 },
             ],
             exit: [],
@@ -173,6 +186,40 @@ const machineConfig3Orig = {
         },
       },
     },
+}
+
+const machineWithGuard = {
+    context: {
+      counter: "0",
+    },
+    id: "lock-count-guard",
+    initial: "unlocked",
+    states: {
+      unlocked: {
+        on: {
+          lock: {
+            target: "locked",
+          },
+          increment: {
+            target: "unlocked",
+            guard: "isOwner",
+            actions: {
+              type: "increment",
+              params: {
+                counter: "1",
+              },
+            },
+          },
+        },
+      },
+      locked: {
+        on: {
+          unlock: {
+            target: "unlocked",
+          },
+        },
+      },
+    }
 }
 
 const implementations = {actions: {}};
@@ -285,6 +332,36 @@ async function runTests() {
     // Run next state
     await runFn("run", {id: machineId, eventName: "increment"});
     console.log("!!!!!!! -> increment");
+
+    // Check state has changed
+    currentState = await runFn("getCurrentState", {id: machineId});
+    console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
+    assert.strictEqual(decodeFromUtf8Array(currentState), "unlocked");
+
+    ///// machine 4 with guard
+
+    machineConfig = parseMachine(machineWithGuard);
+    console.log("==machineWithGuard==")
+    console.log(JSON.stringify(machineConfig))
+    implementationsStr = JSON.stringify(implementations2);
+    let runFnOwner = runFnWrapped(storage, {currentCall: {sender: new Uint8Array([1,1,1,1,1,1]).buffer}});
+    let runFnOther = runFnWrapped(storage, {currentCall: {sender: new Uint8Array([1,1,1,1,1,2]).buffer}});
+
+    // Create the machine
+    result = await runFnOwner("create", machineConfig)
+    machineId = JSON.parse(decodeFromUtf8Array(result)).id;
+    assert.strictEqual(machineId, 3);
+
+    // Apply event
+    await runFnOwner("run", {id: machineId, eventName: "increment"});
+    console.log("!!!!!!! -> increment");
+
+    try {
+        await runFnOther("run", {id: machineId, eventName: "increment"});
+    } catch (e) {
+        console.error(e);
+        assert.equal(e.message.includes("cannot execute transition; guard: isOwner"), true);
+    }
 
     // Check state has changed
     currentState = await runFn("getCurrentState", {id: machineId});

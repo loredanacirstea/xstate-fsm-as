@@ -55,6 +55,13 @@ export function wasmx(storageMap, env, logType = LOG.error) {
         return env.currentCall.callData;
     }
 
+    function getCaller() {
+        if (logType > 1) {
+            console.log('-host-getCaller', env.currentCall.sender);
+        }
+        return env.currentCall.sender;
+    }
+
     function getEnv() {
         return encodeToUtf8Array(JSON.stringify(env));
     }
@@ -67,6 +74,7 @@ export function wasmx(storageMap, env, logType = LOG.error) {
         storageLoad,
         getCallData,
         getEnv,
+        getCaller,
     }
 }
 

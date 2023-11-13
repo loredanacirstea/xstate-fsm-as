@@ -115,6 +115,7 @@ export namespace StateMachine {
   > {
     target: TStateValue;
     actions: Array<ActionObject<TContext, TEvent>>;
+    guard: string;
     cond: ((context: TContext, event: TEvent) => boolean) | null;
   }
 
@@ -152,6 +153,7 @@ export namespace StateMachine {
     TEvent extends EventObject,
     TState extends Typestate<TContext>
   > {
+    id: i32;
     config: StateMachine.Config<TContext, TEvent, TState>;
     initialState: State<TContext, TEvent, TState>;
     transition(
@@ -399,15 +401,18 @@ export class Transition<
 > implements StateMachine.Transition<TContext, TEvent, string>{
   target: TStateValue;
   actions: Array<StateMachine.ActionObject<TContext, TEvent>>;
+  guard: string;
   cond: ((context: TContext, event: TEvent) => boolean) | null;
 
   constructor(
     target: TStateValue,
     actions: Array<StateMachine.ActionObject<TContext, TEvent>>,
+    guard: string,
     cond: ((context: TContext, event: TEvent) => boolean) | null,
   ) {
     this.target = target;
     this.actions = actions;
+    this.guard = guard;
     this.cond = cond;
   }
 }
@@ -422,17 +427,20 @@ export class TransitionExternal<
   name: string;
   target: TStateValue;
   actions: Array<ActionObject<TContext, TEvent>>;
+  guard: string;
   cond: ((context: TContext, event: TEvent) => boolean) | null;
 
   constructor(
     name: string,
     target: TStateValue,
     actions: Array<ActionObject<TContext, TEvent>>,
+    guard: string,
     cond: ((context: TContext, event: TEvent) => boolean) | null,
   ) {
     this.name = name;
     this.target = target;
     this.actions = actions;
+    this.guard = guard;
     this.cond = cond;
   }
 }
