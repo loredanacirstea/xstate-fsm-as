@@ -22,7 +22,6 @@ export function wasmx_env_2(): void {}
 export function instantiate_(): void {}
 
 export function main(): u8[] {
-    console.log("===main===")
     let result: ArrayBuffer;
     const calldata = wasmxwrap.getCallDataWrap<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>();
     if (calldata.run !== null) {
@@ -48,6 +47,13 @@ export function create(
   return _create(_fsmConfig, _implementations);
 }
 
+export function run(
+  id: i32,
+  eventNameBuf: ArrayBuffer,
+): void {
+  return _run(id, eventNameBuf);
+}
+
 export function getCurrentState(id: i32): ArrayBuffer {
   return _getCurrentState(id);
 }
@@ -56,14 +62,3 @@ export function getContextValue(id: i32, keyBuf: ArrayBuffer): ArrayBuffer {
   return _getContextValue(id, keyBuf);
 }
 
-// TODO remove this
-export function transition(id: i32, stateValueBuf: ArrayBuffer, eventNameBuf: ArrayBuffer): ArrayBuffer {
-  return _transition(id, stateValueBuf, eventNameBuf);
-}
-
-export function run(
-  id: i32,
-  eventNameBuf: ArrayBuffer,
-): void {
-  return _run(id, eventNameBuf);
-}

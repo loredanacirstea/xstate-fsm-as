@@ -3,6 +3,7 @@ import assert from "assert";
 // import { describe, it } from 'node:test';
 // import { create, getCurrentState, getContextValue, transition, run } from "../build/debug.js";
 import { load, LOG } from './wasmx.js';
+import { parseMachine } from './utils.js';
 
 let currentState, value;
 
@@ -308,63 +309,3 @@ export function hexToUint8Array(hexString) {
     const encodedString = hexString.match(/.{1,2}/g).map(byte => parseInt(byte, 16));
     return new Uint8Array(encodedString);
 }
-
-function parseMachine(origConfig) {
-    const newConfig = {
-        ...origConfig,
-        context: Object.keys(origConfig.context).map(key => {
-            return {key: key, value: origConfig.context[key]};
-        }),
-        states: Object.keys(origConfig.states).map(key => {
-            const state = origConfig.states[key];
-            const stateon = Object.keys(state.on).map(eventName => {
-                const ev = state.on[eventName];
-                const actions = [];
-                let oactions = ev.actions;
-                if (!oactions) oactions = [];
-                if (oactions instanceof Object && !(oactions instanceof Array)) {
-                    oactions = [oactions];
-                }
-                for (let i = 0; i < oactions.length; i++) {
-                    const action = {
-                        ...oactions[i],
-                        params: Object.keys(oactions[i].params).map(stateName => {
-                            return {key: stateName, value: oactions[i].params[stateName]};
-                        })
-                    }
-                    actions.push(action);
-                }
-
-                return {
-                    name: eventName,
-                    target: ev.target,
-                    actions,
-                }
-            })
-
-            return {
-                name: key,
-                on: stateon,
-                exit: [], // TODO
-                entry: [], // TODO
-            }
-        })
-    };
-    return newConfig;
-}
-// unlocked: {
-//     on: {
-//       lock: {
-//         target: "locked",
-//       },
-//       increment: {
-//         target: "unlocked",
-//         actions: {
-//           type: "increment",
-//           params: {
-//             counter: "1",
-//           },
-//         },
-//       },
-//     },
-//   },
