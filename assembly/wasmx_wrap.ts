@@ -52,6 +52,18 @@ export class CallDataRun {
     }
 }
 
+// @ts-ignore
+@serializable
+export class WasmxLog {
+    type: string = 'fsmvm';
+    data: Uint8Array;
+    topics: Array<Uint8Array>;
+    constructor(data: Uint8Array, topics: Array<Uint8Array>) {
+        this.data = data;
+        this.topics = topics;
+    }
+}
+
 export function getCallDataWrap<
     TContext extends Map<string,string>,
     TEvent extends EventObject,
@@ -71,14 +83,15 @@ export function getCaller(): string {
 }
 
 export function getBalance(address: string): i64 {
-    console.log("--getBalance--")
-    const addrbuf = hexToUint8Array(address);
-    const balancebuf = wasmx.getBalance(addrbuf);
-    console.log("--balancebuf-- " + balancebuf.byteLength.toString());
-    const balanceb = balancebuf.slice(20); // TODO fixme - bigint
-    const balancehex = uint8ArrayToHex(Uint8Array.wrap(balanceb));
-    const balance = parseInt(balancehex, 16);
-    return i64(balance);
+    // console.log("--getBalance--")
+    // const addrbuf = hexToUint8Array(address);
+    // const balancebuf = wasmx.getBalance(addrbuf.buffer);
+    // console.log("--balancebuf-- " + balancebuf.byteLength.toString());
+    // const balanceb = balancebuf.slice(20); // TODO fixme - bigint
+    // const balancehex = uint8ArrayToHex(Uint8Array.wrap(balanceb));
+    // const balance = parseInt(balancehex, 16);
+    // return i64(balance);
+    return i64(0)
 }
 
 export function sstore(key: string, value: string): void {
@@ -128,4 +141,13 @@ export function storeService(id: i32, value: string): void {
 export function loadService(id: i32): string {
     const value = sload(intToString(id));
     return value;
+}
+
+export function log_fsm(
+    data: Uint8Array,
+    topics: Array<Uint8Array>,
+): void {
+    const logs = new WasmxLog(data, topics)
+    const logstr = JSON.stringify<WasmxLog>(logs);
+    wasmx.log(String.UTF8.encode(logstr));
 }

@@ -62,8 +62,20 @@ export function wasmx(storageMap, env, logType = LOG.error) {
         return env.currentCall.sender;
     }
 
+    function getBalance(addrbuf) {
+        const key = [...new Uint8Array(addrbuf)];
+        if (logType > 1) {
+            console.log('-host-getBalance', env.balance[key.toString()]);
+        }
+        return env.balance[key.toString()];
+    }
+
     function getEnv() {
         return encodeToUtf8Array(JSON.stringify(env));
+    }
+
+    function log(item) {
+        console.log('-host-log', item);
     }
 
     return {
@@ -75,6 +87,8 @@ export function wasmx(storageMap, env, logType = LOG.error) {
         getCallData,
         getEnv,
         getCaller,
+        getBalance,
+        log,
     }
 }
 

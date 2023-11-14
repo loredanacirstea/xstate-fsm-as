@@ -482,6 +482,7 @@ async function runTests() {
     // erc20Machine1Orig.context.supply = "1000000";
     erc20Machine1Orig.context.tokenName = "Token";
     erc20Machine1Orig.context.tokenSymbol = "TKN";
+
     machineConfig = parseMachine(erc20Machine1Orig);
     console.log("==erc20Machine1Orig==");
     console.log(JSON.stringify(machineConfig));

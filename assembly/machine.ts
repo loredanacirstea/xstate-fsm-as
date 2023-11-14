@@ -35,6 +35,7 @@ import {
   EventClassExternal,
   // ActionMap,
 } from './types';
+import { hexToUint8Array } from "./utils";
 
 export {
   StateMachine,
@@ -264,6 +265,21 @@ function executeStateActions<
     // if (exec) {
     //   exec(state.context, event);
     // }
+    if (event.type === "mint") {
+        const newctx = mint<TContext, TEvent, TState>(id, state.context, action.params, event);
+        state.context = newctx;
+        return;
+    }
+    if (event.type === "move") {
+        const newctx = move<TContext, TEvent, TState>(id, state.context, action.params, event);
+        state.context = newctx;
+        return;
+    }
+    if (event.type === "logTransfer") {
+        const newctx = logTransfer<TContext, TEvent, TState>(id, state.context, action.params, event);
+        state.context = newctx;
+        return;
+    }
     if (event.type === "increment") {
       const newctx = increment<TContext, TEvent, TState>(state.context, action.params);
       state.context = newctx;
@@ -305,8 +321,97 @@ function hasEnoughBalance<
 ): boolean {
     const from = event.params[0];
     const amount = event.params[2];
-    const balance = wasmxwrap.getBalance(from);
+    const balancestr = ctx.get(getBalanceKey(id, from));
+    const balance = parseInt(balancestr);
     return balance >= parseInt(amount);
+}
+
+function getBalance<
+    TContext extends Map<string,string>,
+>(
+    id: i32,
+    ctx: TContext,
+    addr: string,
+): i64 {
+    const balancestr = ctx.get(getBalanceKey(id, addr));
+    const balance = parseInt(balancestr);
+    return i64(balance);
+}
+
+function setBalance<
+    TContext extends Map<string,string>,
+>(
+    id: i32,
+    ctx: TContext,
+    addr: string,
+    amount: i64,
+): TContext {
+    const key = getBalanceKey(id, addr);
+    ctx.set(key, amount.toString());
+    return ctx;
+}
+
+function getBalanceKey(id: i32, addr: string): string {
+    return "balance_" + id.toString() + addr;
+}
+
+function mint<
+  TContext extends Map<string,string>,
+  TEvent extends EventObject,
+  TState extends Typestate<TContext>,
+>(
+    id: i32,
+    ctx: TContext,
+    params: ActionParam[],
+    event: TEvent,
+): TContext {
+    const addr = event.params[0];
+    const amount = parseInt(event.params[1]);
+    let balance = getBalance(id, ctx, addr);
+    balance += i64(amount);
+    return setBalance(id, ctx, addr, balance);
+}
+
+function move<
+    TContext extends Map<string,string>,
+    TEvent extends EventObject,
+    TState extends Typestate<TContext>,
+>(
+    id: i32,
+    ctx: TContext,
+    params: ActionParam[],
+    event: TEvent,
+): TContext {
+    const from = event.params[0];
+    const to = event.params[1];
+    const amount = parseInt(event.params[2]);
+    let balanceFrom = getBalance(id, ctx, from);
+    let balanceTo = getBalance(id, ctx, to);
+    balanceFrom -= i64(amount);
+    balanceTo += i64(amount);
+    ctx = setBalance(id, ctx, from, balanceFrom);
+    return setBalance(id, ctx, to, balanceTo);
+}
+
+function logTransfer<
+    TContext extends Map<string,string>,
+    TEvent extends EventObject,
+    TState extends Typestate<TContext>,
+>(
+    id: i32,
+    ctx: TContext,
+    params: ActionParam[],
+    event: TEvent,
+): TContext {
+    const from = event.params[0];
+    const to = event.params[1];
+    const amount = parseInt(event.params[2]);
+    const topic0 = hexToUint8Array(id.toString(16));
+    const topic1 = hexToUint8Array(from);
+    const topic2 = hexToUint8Array(to);
+    const topic3 = hexToUint8Array(amount.toString(16));
+    wasmxwrap.log_fsm(new Uint8Array(0), [topic0, topic1, topic2, topic3]);
+    return ctx;
 }
 
 function increment<

@@ -49,6 +49,16 @@ async function instantiate(module, imports = {}) {
         value = __liftBuffer(value >>> 0);
         __module0.finish(value);
       },
+      getBalance(address) {
+        // assembly/wasmx/getBalance(~lib/arraybuffer/ArrayBuffer) => ~lib/arraybuffer/ArrayBuffer
+        address = __liftBuffer(address >>> 0);
+        return __lowerBuffer(__module0.getBalance(address)) || __notnull();
+      },
+      log(value) {
+        // assembly/wasmx/log(~lib/arraybuffer/ArrayBuffer) => void
+        value = __liftBuffer(value >>> 0);
+        __module0.log(value);
+      },
     }),
   };
   const { exports } = await WebAssembly.instantiate(module, adaptedImports);
