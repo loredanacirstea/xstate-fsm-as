@@ -292,13 +292,15 @@ export class ActionObject<
   }
 }
 
+export const RaiseActionType = "xstate.raise";
+
 // @ts-ignore
 @serializable
 export class RaiseAction<
 TContext extends Map<string,string>,
 TEvent extends EventObject
 > extends ActionObject<TContext, TEvent>{
-  type: string = 'xstate.raise';
+  type: string = RaiseActionType;
   params: Array<ActionParam> = [];
   event: EventClassExternal;
 
@@ -401,7 +403,7 @@ export class AssignActionObject<
     assignment: Map<string, string> | null,
     assignmentFn: ((context: TContext, event: TEvent) => string) | null,
   ) {
-    super(type, []);
+    super(type, [], null);
     this.type = type;
     this.assignment = assignment;
     this.assignmentFn = assignmentFn;

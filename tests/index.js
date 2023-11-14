@@ -547,14 +547,28 @@ async function runTests() {
     console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
     assert.strictEqual(decodeFromUtf8Array(currentState), "active");
 
-    // Apply event
-    await runFnOwner("run", {id: machineId, event: {type: "mint", params: [uint8ArrayToHex(sender), "10"]}});
+    // Mint tokens for admin
+    await runFnOwner("run", {id: machineId, event: {type: "mint", params: [uint8ArrayToHex(admin), "100"]}});
     console.log("!!!!!!! -> minted");
+
+    result = await runFn("getContextValue", {id: machineId, key: "balance_4_" + uint8ArrayToHex(admin)});
+    console.log("!!!!!getContextValue", decodeFromUtf8Array(result))
+    currentState = decodeFromUtf8Array(result);
+    assert.strictEqual(currentState, "100");
+
+    // Transfer tokens from owner to sender
+    await runFnOwner("run", {id: machineId, event: {type: "transfer", params: [uint8ArrayToHex(admin), uint8ArrayToHex(sender), "10"]}});
+    console.log("!!!!!!! -> transferred");
 
     result = await runFn("getContextValue", {id: machineId, key: "balance_4_" + uint8ArrayToHex(sender)});
     console.log("!!!!!getContextValue", decodeFromUtf8Array(result))
     currentState = decodeFromUtf8Array(result);
     assert.strictEqual(currentState, "10");
+
+    result = await runFn("getContextValue", {id: machineId, key: "balance_4_" + uint8ArrayToHex(admin)});
+    console.log("!!!!!getContextValue", decodeFromUtf8Array(result))
+    currentState = decodeFromUtf8Array(result);
+    assert.strictEqual(currentState, "90");
 }
 
 runTests();

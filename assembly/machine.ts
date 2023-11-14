@@ -34,6 +34,7 @@ import {
   StateInfoClassExternal,
   TransitionExternal,
   EventClassExternal,
+  RaiseActionType,
   // ActionMap,
 } from './types';
 import { hexToUint8Array } from "./utils";
@@ -256,16 +257,28 @@ function executeStateActions<
   TEvent extends EventObject,
   TState extends Typestate<TContext>,
 >(
-  id: i32,
-  state: StateMachine.State<TContext, TEvent, TState>,
-  event: TEvent
+    service: Service<TContext, TEvent, TState>,
+    id: i32,
+    state: StateMachine.State<TContext, TEvent, TState>,
+    event: TEvent
 ): void {
   for (let i = 0; i < state.actions.length; i++) {
     const action = state.actions[i];
+    console.log("---action-raise?--" + action.type)
     // const exec = action.exec;
     // if (exec) {
     //   exec(state.context, event);
     // }
+    if (action.type === RaiseActionType) {
+        const ev = action.event;
+        if (ev === null) {
+            wasmx.revert(String.UTF8.encode("raise action is missing event"));
+            throw new Error("raise action is missing event");
+        }
+        const _event: TEvent = new EventClass(ev.type, ev.params);
+        service.send(_event);
+        return;
+    }
     if (event.type === "mint") {
         const newctx = mint<TContext, TEvent, TState>(id, state.context, action.params, event);
         state.context = newctx;
@@ -481,11 +494,12 @@ export class Service<
   }
 
   send(event: TEvent): void {
+    console.log("--send-" + event.type);
     if (this.status !== InterpreterStatus.Running) {
       return;
     }
     this.state = this.machine.transition(this.state, event);
-    executeStateActions<TContext, TEvent, TState>(this.id, this.state, event);
+    executeStateActions<TContext, TEvent, TState>(this, this.id, this.state, event);
 
     const listeners = this.listeners.values();
     for (let i = 0; i < listeners.length; i++) {
@@ -504,7 +518,7 @@ export class Service<
 
   start(): Service<TContext, TEvent, TState> {
     this.status = InterpreterStatus.Running;
-    executeStateActions<TContext, TEvent, TState>(this.id, this.state, INIT_EVENT);
+    executeStateActions<TContext, TEvent, TState>(this, this.id, this.state, INIT_EVENT);
     this.send(INIT_EVENT);
     return this;
   }
@@ -829,6 +843,7 @@ export class Machine<
             //   allActions.push(stateConfig.exit[i]);
             // }
             for (let i = 0; i < actions.length; i++) {
+                console.log("--raise?-" + actions[i].type + "---" + actions[i].params.join("--"));
               allActions.push(actions[i]);
             }
             // for (let i = 0; i < stateConfig.exit.length; i++) {
@@ -866,16 +881,16 @@ export class Machine<
 
           // child states! we choose the first one
           const stateConfig = findStateInfo<TContext, TEvent, TState>(this.config.states, resolvedTarget);
-          console.log("--findStateInfo--END=")
+          console.log("--findStateInfo--END=");
           if (!stateConfig) {
             wasmx.revert(String.UTF8.encode("state not found: " + resolvedTarget));
             throw new Error("state not found: " + resolvedTarget);
           }
-          console.log("--findStateInfo--END1=")
+          console.log("--findStateInfo--END1=");
           if (stateConfig.states !== null && stateConfig.states.keys().length > 0) {
             resolvedTarget = stateConfig.states.keys()[0];
           }
-          console.log("--findStateInfo--END2=")
+          console.log("--findStateInfo--END2=");
 
           return new State<TContext, TEvent, TState>(resolvedTarget, nextContext, nonAssignActions, target !== value || nonAssignActions.length > 0 || assigned);
           // matches: createMatcher(resolvedTarget)
@@ -1001,7 +1016,10 @@ export function getContextValueInternal(id: i32, key: string): ArrayBuffer {
         throw new Error("no ctx");
     }
     console.log("--getContext--" + ctx.keys().join(","));
-    return String.UTF8.encode(ctx.get(key));
+    if (ctx.has(key)) {
+        return String.UTF8.encode(ctx.get(key));
+    }
+    return new ArrayBuffer(0);
 }
 
 // TODO remove this
