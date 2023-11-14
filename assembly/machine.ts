@@ -32,6 +32,7 @@ import {
   StateClassExternal,
   StateInfoClassExternal,
   TransitionExternal,
+  EventClassExternal,
   // ActionMap,
 } from './types';
 
@@ -54,7 +55,6 @@ function nodeEnv(): string {
   return "PRODUCTION";
 }
 
-// const INIT_EVENT: InitEvent = { type: 'xstate.init' };
 const INIT_EVENT = new InitEvent();
 const ASSIGN_ACTION: StateMachine.AssignAction = 'xstate.assign';
 const WILDCARD = '*';
@@ -102,16 +102,6 @@ const WILDCARD = '*';
 // }
 
 const IS_PRODUCTION = nodeEnv() === 'production';
-
-// function createMatcher(value: string): (stateValue: string) => boolean {
-//   return (stateValue: string) => value === stateValue;
-// }
-
-function toEventObject<TEvent extends EventObject>(
-  eventName: string
-): TEvent {
-  return ({ type: eventName }) as TEvent;
-}
 
 function createUnchangedState<
   TC extends Map<string,string>,
@@ -184,8 +174,11 @@ TState extends Typestate<TContext>,
     id: i32,
     ctx: TContext,
     guard: string,
+    event: TEvent,
 ): boolean {
-    if (guard === "isOwner") return isOwner<TContext, TEvent, TState>(id, ctx, []);
+    if (guard === "isAdmin") return isAdmin<TContext, TEvent, TState>(id, ctx, []);
+    if (guard === "hasEnoughBalance") return hasEnoughBalance<TContext, TEvent, TState>(id, ctx, [], event);
+
     return true;
 }
 
@@ -286,7 +279,7 @@ function executeStateActions<
   }
 }
 
-function isOwner<
+function isAdmin<
   TContext extends Map<string,string>,
   TEvent extends EventObject,
   TState extends Typestate<TContext>,
@@ -298,6 +291,22 @@ function isOwner<
   const caller = wasmxwrap.getCaller();
   const owner = wasmxwrap.loadOwner(id);
  return caller === owner;
+}
+
+function hasEnoughBalance<
+  TContext extends Map<string,string>,
+  TEvent extends EventObject,
+  TState extends Typestate<TContext>,
+>(
+  id: i32,
+  ctx: TContext,
+  params: ActionParam[],
+  event: TEvent,
+): boolean {
+    const from = event.params[0];
+    const amount = event.params[2];
+    const balance = wasmxwrap.getBalance(from);
+    return balance >= parseInt(amount);
 }
 
 function increment<
@@ -429,7 +438,7 @@ export class ServiceExternal<
     const stateactions: Array<ActionObject<ContextGeneral<string>,EventObject>> = [];
     for (let i = 0; i < service.state.actions.length; i++) {
         const act = service.state.actions[i];
-        stateactions.push(new ActionObject(act.type, act.params));
+        stateactions.push(new ActionObject(act.type, act.params, act.event));
     }
     const state = new StateClassExternal<ContextGeneral<string>,EventObject, Typestate<ContextGeneral<string>>>(
         service.state.value,
@@ -441,6 +450,7 @@ export class ServiceExternal<
   }
 
   toInternal(): Service<TContext, TEvent, TState> {
+    console.log("--service toInternal()--");
     const machine = this.machine.toInternal();
     const context: TContext = new Map<string, string>();
     for (let i = 0; i < this.state.context.length; i++) {
@@ -450,7 +460,7 @@ export class ServiceExternal<
     const stateactions: Array<StateMachine.ActionObject<TContext, TEvent>> = [];
     for (let i = 0; i < this.state.actions.length; i++) {
         const act = this.state.actions[i];
-        stateactions.push(new ActionObject<TContext, TEvent>(act.type, act.params));
+        stateactions.push(new ActionObject<TContext, TEvent>(act.type, act.params, act.event));
     }
     const state = new StateClass<TContext, TEvent, TState>(
         this.state.value,
@@ -459,6 +469,7 @@ export class ServiceExternal<
         this.state.changed,
     )
     const status = this.status;
+    console.log("--service toInternal()-END-");
     return new Service(this.id, machine, state, status);
   }
 }
@@ -487,45 +498,12 @@ export class MachineExternal<
 
   static fromInternal(machine: StateMachine.Machine<ContextGeneral<string>,EventObject, Typestate<ContextGeneral<string>>>): MachineExternal<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>> {
     const ctx: Array<ContextParam> = [];
-    const states: Array<StateInfoClassExternal<ContextGeneral<string>,EventObject>> = [];
     const octx = machine.config.context;
     const octxKeys = octx.keys();
     for (let i = 0; i < octxKeys.length; i++) {
         ctx.push(new ContextParam(octxKeys[i], octx.get(octxKeys[i])));
     }
-    const ostates = machine.config.states;
-    const ostatesKeys = ostates.keys();
-    console.log("--machine.fromInternal0--");
-    for (let i = 0; i < ostatesKeys.length; i++) {
-        const onevents: Array<TransitionExternal<ContextGeneral<string>,EventObject, string>> = [];
-        const stateInfo = ostates.get(ostatesKeys[i]);
-        const stateInfoOn = stateInfo.on.keys();
-        console.log("--machine.fromInternal1--");
-        for (let j = 0; j < stateInfoOn.length; j++) {
-            const evInfo = stateInfo.on.get(stateInfoOn[j]);
-            const evActions: Array<ActionObject<ContextGeneral<string>,EventObject>> = [];
-            console.log("--machine.fromInternal2--");
-            for (let k = 0; k < evInfo.actions.length; k++) {
-                const actionobj = evInfo.actions[k];
-                evActions.push(new ActionObject(actionobj.type, actionobj.params));
-            }
-            console.log("--machine.fromInternal3--");
-            console.log("--guard--" + evInfo.guard);
-            onevents.push(new TransitionExternal(
-                stateInfoOn[j],
-                evInfo.target,
-                evActions,
-                evInfo.guard,
-                null,
-            ));
-        }
-        states.push(new StateInfoClassExternal(
-            ostatesKeys[i],
-            onevents,
-            [], // TODO stateInfo.exit
-            [], // TODO stateInfo.entry
-        ));
-    }
+    const states = StateInfoClassExternal.fromInternalStatesMap(machine.config.states);
 
     const config = new ConfigExternal<ContextGeneral<string>,EventObject, Typestate<ContextGeneral<string>>>(
         machine.config.id,
@@ -541,7 +519,7 @@ export class MachineExternal<
     const iniactions: Array<ActionObject<ContextGeneral<string>,EventObject>> = [];
     for (let i = 0; i < machine.initialState.actions.length; i++) {
         const act = machine.initialState.actions[i];
-        iniactions.push(new ActionObject(act.type, act.params));
+        iniactions.push(new ActionObject(act.type, act.params, act.event));
     }
 
     const initialState = new StateClassExternal<ContextGeneral<string>,EventObject, Typestate<ContextGeneral<string>>>(
@@ -556,36 +534,13 @@ export class MachineExternal<
   }
 
   toInternal(): Machine<TContext, TEvent, TState> {
+    console.log("-Machine toInternal--")
     const context: TContext = new Map<string,string>();
-    const states = new Map<string,StateInfo<TContext, TEvent>>();
     const ctxpairs = this.config.context;
     for (let i = 0; i < ctxpairs.length; i++) {
         context.set(ctxpairs[i].key, ctxpairs[i].value);
     }
-    const ostates = this.config.states;
-    for (let i = 0; i < ostates.length; i++) {
-        const stateon: StateInfoEvents<TContext, TEvent> = new Map<string,StateMachine.Transition<TContext, TEvent, string>>();
-        for (let j = 0; j < ostates[i].on.length; j++) {
-            const onev = ostates[i].on[j];
-            const actions: Array<StateMachine.ActionObject<TContext, TEvent>> = [];
-            for (let k = 0; k < onev.actions.length; k++) {
-                const action = onev.actions[k];
-                actions.push(new ActionObject<TContext, TEvent>(action.type, action.params));
-            }
-            stateon.set(onev.name, new Transition<TContext, TEvent, string>(
-                onev.target,
-                actions,
-                onev.guard,
-                null,
-            ))
-        }
-        const state = new StateInfoClass<TContext, TEvent>(
-            stateon,
-            ostates[i].exit,
-            ostates[i].entry,
-        )
-        states.set(ostates[i].name, state);
-    }
+    const states = StateInfoClassExternal.toInternalFromArray(this.config.states);
     const config = new Config<TContext, TEvent, TState>(
         this.config.id,
         this.config.initial,
@@ -600,7 +555,7 @@ export class MachineExternal<
     const iniactions: Array<StateMachine.ActionObject<TContext, TEvent>> = [];
     for (let i = 0; i < this.initialState.actions.length; i++) {
         const act = this.initialState.actions[i];
-        iniactions.push(new ActionObject<TContext, TEvent>(act.type, act.params));
+        iniactions.push(new ActionObject<TContext, TEvent>(act.type, act.params, act.event));
     }
     const initialState = new StateClass<TContext, TEvent, TState>(
         this.initialState.value,
@@ -608,6 +563,7 @@ export class MachineExternal<
         iniactions,
         this.initialState.changed,
     );
+    console.log("-Machine toInternal-END-")
     return new Machine<TContext, TEvent, TState>(this.id, config, initialState);
   }
 }
@@ -716,7 +672,7 @@ export class Machine<
 
         console.log("----transition-nextStateConfig--" + nextStateConfig.on.keys().join(","))
 
-        if (guard && !executeGuard<TContext, TEvent, TState>(this.id, context, guard)) {
+        if (guard && !executeGuard<TContext, TEvent, TState>(this.id, context, guard, event)) {
             wasmx.revert(String.UTF8.encode("cannot execute transition; guard: " + guard));
             throw new Error("cannot execute transition; guard: " + guard);
         }
@@ -816,24 +772,8 @@ export function createInternal<
         implementations = new Implementations<ContextGeneral<string>, EventObject>();
     }
   const ctx = new Map<string, string>();
-  const states: Map<string, StateInfo<ContextGeneral<string>, EventObject>> = new Map();
-  for (let i = 0; i < fsmConfigExternal.states.length; i++) {
-    const state = fsmConfigExternal.states[i];
-    const stateOn: StateInfoEvents<ContextGeneral<string>, EventObject> = new Map<string,StateMachine.Transition<ContextGeneral<string>, EventObject, string>>();
-    for (let j = 0; j < state.on.length; j++) {
-      const onobj = state.on[j];
-      console.log("----onobj--" + state.name);
-      const onobjActions: StateMachine.ActionObject<ContextGeneral<string>, EventObject>[] = [];
-      if (onobj.actions) {
-        for (let x = 0; x < onobj.actions.length; x++) {
-          const act = onobj.actions[x];
-          onobjActions.push(act);
-        }
-      }
-      stateOn.set(onobj.name, new Transition<ContextGeneral<string>, EventObject>(onobj.target, onobjActions, onobj.guard, onobj.cond));
-    }
-    states.set(state.name, new StateInfoClass<ContextGeneral<string>, EventObject>(stateOn, state.exit, state.entry));
-  }
+
+  const states = StateInfoClassExternal.toInternalFromArray(fsmConfigExternal.states);
 
   console.log("----config3-" + fsmConfigExternal.context.length.toString());
 
@@ -861,15 +801,13 @@ export function createInternal<
 
   const service = new Service<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>(expectedId, machine, null , InterpreterStatus.NotStarted);
 
-  service.start();
+    console.log("--service.start--start--")
 
-  console.log("--_createMachine--service started--")
+    service.start();
+    console.log("--service.start--end--")
 
-  // TODO extract context from service
-
-
-//   const fsmConfigStr = JSON.stringify<ConfigExternal<TContext, TEvent, TState>>(fsmConfigExternal);
     const serviceJson = ServiceExternal.fromInternal(service);
+    console.log("--service external--");
     const data = JSON.stringify<ServiceExternal<TContext, TEvent, TState>>(serviceJson);
 
     console.log("--_createMachine--data-- " + data);
@@ -918,7 +856,7 @@ export function getContextValueInternal(id: i32, key: string): ArrayBuffer {
 }
 
 // TODO remove this
-export function transition(id: i32, stateValueBuf: ArrayBuffer, eventNameBuf: ArrayBuffer): ArrayBuffer {
+export function transition(id: i32, stateValueBuf: ArrayBuffer, eventBuf: ArrayBuffer): ArrayBuffer {
   const service = loadServiceFromId<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>(id);
   if (!service) {
     wasmx.revert(String.UTF8.encode("no service"));
@@ -926,31 +864,32 @@ export function transition(id: i32, stateValueBuf: ArrayBuffer, eventNameBuf: Ar
   }
 
   const stateValue = String.UTF8.decode(stateValueBuf);
-  const eventName = String.UTF8.decode(eventNameBuf);
-  console.log("----transition--" + stateValue + " - " + eventName);
+  const event = JSON.parse<EventClassExternal>(String.UTF8.decode(eventBuf));
+  const _event = new EventClass(event.type, event.params);
+  console.log("----transition--" + stateValue + " - " + _event.type);
   const state = new State<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>(stateValue, service.machine.config.context, [], false);
-  const event: EventObject = new EventClass(eventName);
-  const nextState = service.machine.transition(state, event);
+  const nextState = service.machine.transition(state, _event);
   console.log("----nextState-" + nextState.value)
   return String.UTF8.encode(nextState.value);
 }
 
 export function run(
   id: i32,
-  eventNameBuf: ArrayBuffer,
+  eventBuf: ArrayBuffer,
 ): void {
-  const eventName = String.UTF8.decode(eventNameBuf);
-  runInternal(id, eventName);
+  const event = JSON.parse<EventClassExternal>(String.UTF8.decode(eventBuf));
+  const _event = new EventClass(event.type, event.params);
+  runInternal(id, _event);
 }
 
-export function runInternal(id: i32, eventName: string): ArrayBuffer {
+export function runInternal(id: i32, event: EventClass): ArrayBuffer {
+    console.log("--runInternal--" + id.toString() + "--" + event.type);
     const service = loadServiceFromId<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>(id);
     if (!service) {
         wasmx.revert(String.UTF8.encode("no service"));
         throw new Error("no service");
     }
-    console.log("--run--transition--" + eventName);
-    const event: EventObject = new EventClass(eventName);
+    console.log("--run--transition--" + event.type);
     service.send(event);
     // save service in storage again;
     saveService(id, service);

@@ -2,10 +2,11 @@ import { JSON } from "json-as/assembly";
 import * as wasmx from './wasmx';
 import {
     ConfigExternal,
+    EventClassExternal,
     EventObject,
     Typestate,
 } from './types';
-import { uint8ArrayToHex } from "./utils";
+import { hexToU8, uint8ArrayToHex, hexToUint8Array } from "./utils";
 
 // @ts-ignore
 @serializable
@@ -44,10 +45,10 @@ export class CallDataGetContextValue {
 @serializable
 export class CallDataRun {
     id: i32;
-    eventName: string;
-    constructor(id: i32, eventName: string) {
+    event: EventClassExternal;
+    constructor(id: i32, event: EventClassExternal) {
         this.id = id;
-        this.eventName = eventName;
+        this.event = event;
     }
 }
 
@@ -67,6 +68,17 @@ export function getCaller(): string {
     const callerbuf = wasmx.getCaller();
     console.log("--callerbuf-- " + callerbuf.byteLength.toString());
     return uint8ArrayToHex(Uint8Array.wrap(callerbuf));
+}
+
+export function getBalance(address: string): i64 {
+    console.log("--getBalance--")
+    const addrbuf = hexToUint8Array(address);
+    const balancebuf = wasmx.getBalance(addrbuf);
+    console.log("--balancebuf-- " + balancebuf.byteLength.toString());
+    const balanceb = balancebuf.slice(20); // TODO fixme - bigint
+    const balancehex = uint8ArrayToHex(Uint8Array.wrap(balanceb));
+    const balance = parseInt(balancehex, 16);
+    return i64(balance);
 }
 
 export function sstore(key: string, value: string): void {

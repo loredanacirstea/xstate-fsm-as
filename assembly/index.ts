@@ -15,6 +15,7 @@ import {
   ContextGeneral,
   EventObject,
   Typestate,
+  EventClass,
 } from './types';
 
 export function wasmx_env_2(): void {}
@@ -25,7 +26,9 @@ export function main(): u8[] {
     let result: ArrayBuffer;
     const calldata = wasmxwrap.getCallDataWrap<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>();
     if (calldata.run !== null) {
-      result = runInternal(calldata.run!.id, calldata.run!.eventName);
+      const event = calldata.run!.event;
+      const _event = new EventClass(event.type, event.params);
+      result = runInternal(calldata.run!.id, _event);
     } else if (calldata.create !== null) {
       result = createInternal<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>(calldata.create!, null);
     } else if (calldata.getCurrentState !== null) {

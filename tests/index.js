@@ -3,7 +3,7 @@ import assert from "assert";
 // import { describe, it } from 'node:test';
 // import { create, getCurrentState, getContextValue, transition, run } from "../build/debug.js";
 import { load, LOG } from './wasmx.js';
-import { parseMachine } from './utils.js';
+import { parseMachine, uint8ArrayToHex, raise } from './utils.js';
 
 let currentState, value;
 
@@ -38,10 +38,13 @@ let machineConfig = {
                     name: "next",
                     target: "blue",
                     guard: "",
+                    actions: [],
                 },
             ],
             exit: [],
             entry: [],
+            initial: "",
+            states: [],
         },
         {
             name: "blue",
@@ -50,10 +53,13 @@ let machineConfig = {
                     name: "next",
                     target: "red",
                     guard: "",
+                    actions: [],
                 },
             ],
             exit: [],
             entry: [],
+            initial: "",
+            states: [],
         },
     ],
 }
@@ -71,6 +77,7 @@ const machineConfig2 = {
                     name: "lock",
                     target: "lock",
                     guard: "",
+                    actions: [],
                 },
                 {
                     name: "set",
@@ -97,6 +104,8 @@ const machineConfig2 = {
             ],
             exit: [],
             entry: [],
+            initial: "",
+            states: [],
         },
         {
             name: "lock",
@@ -105,10 +114,13 @@ const machineConfig2 = {
                     name: "unlock",
                     target: "unlock",
                     guard: "",
+                    actions: [],
                 },
             ],
             exit: [],
             entry: [],
+            initial: "",
+            states: [],
         },
     ],
 }
@@ -202,7 +214,7 @@ const machineWithGuard = {
           },
           increment: {
             target: "unlocked",
-            guard: "isOwner",
+            guard: "isAdmin",
             actions: {
               type: "increment",
               params: {
@@ -216,6 +228,102 @@ const machineWithGuard = {
         on: {
           unlock: {
             target: "unlocked",
+          },
+        },
+      },
+    }
+}
+
+const erc20Machine1Orig = {
+    context: {
+      admin: "",
+      supply: "0",
+      tokenName: "",
+      tokenSymbol: "",
+    },
+    id: "ERC20",
+    initial: "uninitialized",
+    states: {
+      uninitialized: {
+        on: {
+          initialize: {
+            target: "unlocked",
+            actions: {
+              type: "mint",
+              params: {
+                admin: "",
+                adminBalance: "",
+              },
+            },
+          },
+        },
+      },
+      unlocked: {
+        initial: "active",
+        states: {
+          active: {
+            on: {
+              transfer: {
+                target: "intransfer",
+                guard: "hasEnoughBalance",
+                actions: raise({ type: "move" }),
+              },
+              mint: {
+                target: "active",
+                guard: "isAdmin",
+                actions: {
+                  type: "mint",
+                },
+              },
+            },
+          },
+          intransfer: {
+            entry: {
+              type: "setCurrentTransfer",
+            },
+            exit: {
+              type: "deleteCurrentTransfer",
+            },
+            initial: "unmoved",
+            states: {
+              unmoved: {
+                on: {
+                  move: {
+                    target: "moved",
+                    actions: [
+                      {
+                        type: "move",
+                      },
+                      {
+                        type: "logTransfer",
+                      },
+                      raise({ type: "finish" }),
+                    ],
+                  },
+                },
+              },
+              moved: {
+                on: {
+                  finish: {
+                    target: "#ERC20.unlocked.active",
+                  },
+                },
+              },
+            },
+          },
+        },
+        on: {
+          lock: {
+            target: "locked",
+            guard: "isAdmin",
+          },
+        },
+      },
+      locked: {
+        on: {
+          unlock: {
+            target: "unlocked",
+            guard: "isAdmin",
           },
         },
       },
@@ -245,7 +353,7 @@ async function runTests() {
     assert.strictEqual(currentState, "red");
 
     // Run next state
-    await runFn("run", {id: machineId, eventName: "next"});
+    await runFn("run", {id: machineId, event: {type: "next", params: []}});
     console.log("!!!!!!! -> next");
 
     // Check state has changed
@@ -281,7 +389,7 @@ async function runTests() {
     assert.strictEqual(currentState, "0");
 
     // Run next state
-    await runFn("run", {id: machineId, eventName: "increment"});
+    await runFn("run", {id: machineId, event: {type: "increment", params: []}});
     console.log("!!!!!!! -> increment");
 
     // Check state has changed
@@ -296,7 +404,7 @@ async function runTests() {
     assert.strictEqual(currentState, "1");
 
     // Run lock transition
-    await runFn("run", {id: machineId, eventName: "lock"});
+    await runFn("run", {id: machineId, event: {type: "lock", params: []}});
     console.log("!!!!!!! -> lock");
 
     // Check state has been locked
@@ -307,7 +415,7 @@ async function runTests() {
     // Check no increment is possible
     console.log("!!!!!!! -> try increment");
     try {
-        await runFn("run", {id: machineId, eventName: "increment"});
+        await runFn("run", {id: machineId, event: {type: "increment", params: []}});
     } catch (e) {
         console.error(e);
         assert.equal(e.message.includes("cannot apply event in current state"), true);
@@ -330,7 +438,7 @@ async function runTests() {
     assert.strictEqual(machineId, 2);
 
     // Run next state
-    await runFn("run", {id: machineId, eventName: "increment"});
+    await runFn("run", {id: machineId, event: {type: "increment", params: []}});
     console.log("!!!!!!! -> increment");
 
     // Check state has changed
@@ -353,20 +461,41 @@ async function runTests() {
     assert.strictEqual(machineId, 3);
 
     // Apply event
-    await runFnOwner("run", {id: machineId, eventName: "increment"});
+    await runFnOwner("run", {id: machineId, event: {type: "increment", params: []}});
     console.log("!!!!!!! -> increment");
 
     try {
-        await runFnOther("run", {id: machineId, eventName: "increment"});
+        await runFnOther("run", {id: machineId, event: {type: "increment", params: []}});
     } catch (e) {
         console.error(e);
-        assert.equal(e.message.includes("cannot execute transition; guard: isOwner"), true);
+        assert.equal(e.message.includes("cannot execute transition; guard: isAdmin"), true);
     }
 
     // Check state has changed
     currentState = await runFn("getCurrentState", {id: machineId});
     console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
     assert.strictEqual(decodeFromUtf8Array(currentState), "unlocked");
+
+    // machine 5 - erc20
+    const admin = new Uint8Array([1,1,1,1,1,1]);
+    erc20Machine1Orig.context.admin = uint8ArrayToHex(admin);
+    // erc20Machine1Orig.context.supply = "1000000";
+    erc20Machine1Orig.context.tokenName = "Token";
+    erc20Machine1Orig.context.tokenSymbol = "TKN";
+    machineConfig = parseMachine(erc20Machine1Orig);
+    console.log("==erc20Machine1Orig==");
+    console.log(JSON.stringify(machineConfig));
+    runFnOwner = runFnWrapped(storage, {currentCall: {sender: admin.buffer}});
+    runFnOther = runFnWrapped(storage, {currentCall: {sender: new Uint8Array([1,1,1,1,1,2]).buffer}});
+
+    // Create the machine
+    result = await runFnOwner("create", machineConfig)
+    machineId = JSON.parse(decodeFromUtf8Array(result)).id;
+    assert.strictEqual(machineId, 4);
+
+    // Apply event
+    await runFnOwner("run", {id: machineId, event: "mint"});
+    console.log("!!!!!!! -> increment");
 }
 
 runTests();

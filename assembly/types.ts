@@ -10,18 +10,34 @@ export enum InterpreterStatus {
 
 export interface EventObject {
   type: string;
+  params: string[];
 }
 
 export class EventClass implements EventObject {
   type: string;
+  params: string[];
 
-  constructor(type: string) {
+  constructor(type: string, params: string[]) {
     this.type = type;
+    this.params = params;
+  }
+}
+
+// @ts-ignore
+@serializable
+export class EventClassExternal {
+  type: string;
+  params: string[];
+
+  constructor(type: string, params: string[]) {
+    this.type = type;
+    this.params = params;
   }
 }
 
 export class InitEvent implements EventObject {
-  type: string = 'xstate.init';
+  type: string = 'initialize';
+  params: string[] = [];
 }
 
 export type ContextGeneral<T> =  Map<string,T>
@@ -45,6 +61,8 @@ export interface StateInfo<
   // entry: Array<StateMachine.Action<TContext, TEvent>>;
   exit: Array<ActionClass<TContext, TEvent>>;
   entry: Array<ActionClass<TContext, TEvent>>;
+  initial: string;
+  states: States<TContext, TEvent>;
 }
 
 export type States<
@@ -87,7 +105,8 @@ export namespace StateMachine {
     // assignmentFn: PropertyAssignerFn<TContext, TEvent> | null;
     // properties: Map<string,string>
     type: string;
-    params: Array<ActionParam>
+    params: Array<ActionParam>;
+    event: EventObject | null;
   }
 
   export type ActionFunction<
@@ -263,10 +282,26 @@ export class ActionObject<
 > implements StateMachine.ActionObject<TContext, TEvent>{
   type: string;
   params: Array<ActionParam>
+  event: EventObject | null
 
-  constructor(type: string, params: Array<ActionParam>) {
+  constructor(type: string, params: Array<ActionParam>, event: EventObject | null) {
     this.type = type;
     this.params = params;
+    this.event = event;
+  }
+}
+
+export class RaiseAction<
+TContext extends Map<string,string>,
+TEvent extends EventObject
+>extends ActionObject<TContext, TEvent>{
+  type: string = 'xstate.raise';
+  params: Array<ActionParam> = [];
+  event: EventObject;
+
+  constructor(type: string, params: Array<ActionParam>, event: EventObject) {
+    super(type, params, null);
+    this.event = event;
   }
 }
 
@@ -475,6 +510,8 @@ export class StateInfoClass<
   on: StateInfoEvents<TContext, TEvent>;
   exit: Array<ActionClass<TContext, TEvent>>;
   entry: Array<ActionClass<TContext, TEvent>>;
+  initial: string;
+  states: States<TContext, TEvent>;
 
   constructor(
     on: StateInfoEvents<TContext, TEvent>,
@@ -482,10 +519,14 @@ export class StateInfoClass<
     entry: Array<ActionClass<TContext, TEvent>>,
     // exit: Array<StateMachine.Action<TContext, TEvent>>,
     // entry: Array<StateMachine.Action<TContext, TEvent>>,
+    initial: string,
+    childstates: States<TContext, TEvent>,
   ) {
     this.on = on;
     this.exit = exit;
     this.entry = entry;
+    this.initial = initial;
+    this.states = childstates;
   }
 }
 
@@ -499,17 +540,108 @@ export class StateInfoClassExternal<
   on: Array<TransitionExternal<TContext, TEvent, string>>;
   exit: Array<ActionClass<TContext, TEvent>>;
   entry: Array<ActionClass<TContext, TEvent>>;
+  initial: string;
+  states: Array<StateInfoClassExternal<TContext, TEvent>>;
 
   constructor(
     name: string,
     on: Array<TransitionExternal<TContext, TEvent, string>>,
     exit: Array<ActionClass<TContext, TEvent>>,
     entry: Array<ActionClass<TContext, TEvent>>,
+    initial: string,
+    childstates: Array<StateInfoClassExternal<TContext, TEvent>>,
   ) {
     this.name = name;
     this.on = on;
     this.exit = exit;
     this.entry = entry;
+    this.initial = initial;
+    this.states = childstates;
+  }
+
+  static fromInternalStatesMap(
+    states: States<ContextGeneral<string>,EventObject>,
+  ): Array<StateInfoClassExternal<ContextGeneral<string>,EventObject>> {
+    const estates: Array<StateInfoClassExternal<ContextGeneral<string>,EventObject>> = [];
+    const statesKeys = states.keys();
+    for (let i = 0; i < statesKeys.length; i++) {
+      const estate = StateInfoClassExternal.fromInternal(states.get(statesKeys[i]), statesKeys[i]);
+      estates.push(estate);
+    }
+    return estates;
+  }
+
+  static fromInternal(
+    stateInfo: StateInfo<ContextGeneral<string>,EventObject>,
+    stateName: string,
+  ): StateInfoClassExternal<ContextGeneral<string>,EventObject> {
+    const onevents: Array<TransitionExternal<ContextGeneral<string>,EventObject, string>> = [];
+    const stateInfoOn = stateInfo.on.keys();
+    for (let j = 0; j < stateInfoOn.length; j++) {
+        const evInfo = stateInfo.on.get(stateInfoOn[j]);
+        const evActions: Array<ActionObject<ContextGeneral<string>,EventObject>> = [];
+        for (let k = 0; k < evInfo.actions.length; k++) {
+            const actionobj = evInfo.actions[k];
+            evActions.push(new ActionObject<ContextGeneral<string>,EventObject>(actionobj.type, actionobj.params, actionobj.event));
+        }
+        onevents.push(new TransitionExternal<ContextGeneral<string>,EventObject>(
+            stateInfoOn[j],
+            evInfo.target,
+            evActions,
+            evInfo.guard,
+            null,
+        ));
+    }
+    return new StateInfoClassExternal(
+      stateName,
+      onevents,
+      [], // TODO stateInfo.exit
+      [], // TODO stateInfo.entry
+      stateInfo.initial,
+      StateInfoClassExternal.fromInternalStatesMap(stateInfo.states),
+    );
+  }
+
+  static toInternalFromArray<
+    TContext extends Map<string,string>,
+    TEvent extends EventObject,
+  >(ostates: Array<StateInfoClassExternal<TContext,TEvent>>): States<TContext,TEvent> {
+    console.log("--toInternalFromArray--");
+    const states = new Map<string,StateInfo<TContext,TEvent>>();
+    for (let i = 0; i < ostates.length; i++) {
+      const state = ostates[i].toInternal();
+      states.set(ostates[i].name, state);
+    }
+    console.log("--toInternalFromArray-END-" + states.keys().length.toString());
+    return states;
+  }
+
+  toInternal(): StateInfo<TContext,TEvent> {
+    console.log("--toInternal--" + this.name);
+    const stateon: StateInfoEvents<TContext, TEvent> = new Map<string,StateMachine.Transition<TContext, TEvent, string>>();
+    for (let j = 0; j < this.on.length; j++) {
+        const onev = this.on[j];
+        const actions: Array<StateMachine.ActionObject<TContext, TEvent>> = [];
+        for (let k = 0; k < onev.actions.length; k++) {
+            const action = onev.actions[k];
+            actions.push(new ActionObject<TContext, TEvent>(action.type, action.params, action.event));
+        }
+        stateon.set(onev.name, new Transition<TContext, TEvent, string>(
+            onev.target,
+            actions,
+            onev.guard,
+            null,
+        ))
+    }
+
+    const childstates = StateInfoClassExternal.toInternalFromArray(this.states);
+    return new StateInfoClass<TContext, TEvent>(
+      stateon,
+      this.exit,
+      this.entry,
+      this.initial,
+      childstates,
+    )
   }
 }
 
