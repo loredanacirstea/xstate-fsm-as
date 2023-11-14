@@ -106,7 +106,8 @@ export namespace StateMachine {
     // properties: Map<string,string>
     type: string;
     params: Array<ActionParam>;
-    event: EventObject | null;
+    // event: TEvent | null;
+    event: EventClassExternal | null
   }
 
   export type ActionFunction<
@@ -282,24 +283,26 @@ export class ActionObject<
 > implements StateMachine.ActionObject<TContext, TEvent>{
   type: string;
   params: Array<ActionParam>
-  event: EventObject | null
+  event: EventClassExternal | null
 
-  constructor(type: string, params: Array<ActionParam>, event: EventObject | null) {
+  constructor(type: string, params: Array<ActionParam>, event: EventClassExternal | null) {
     this.type = type;
     this.params = params;
     this.event = event;
   }
 }
 
+// @ts-ignore
+@serializable
 export class RaiseAction<
 TContext extends Map<string,string>,
 TEvent extends EventObject
->extends ActionObject<TContext, TEvent>{
+> extends ActionObject<TContext, TEvent>{
   type: string = 'xstate.raise';
   params: Array<ActionParam> = [];
-  event: EventObject;
+  event: EventClassExternal;
 
-  constructor(type: string, params: Array<ActionParam>, event: EventObject) {
+  constructor(type: string, params: Array<ActionParam>, event: EventClassExternal) {
     super(type, params, null);
     this.event = event;
   }
@@ -582,7 +585,12 @@ export class StateInfoClassExternal<
         const evActions: Array<ActionObject<ContextGeneral<string>,EventObject>> = [];
         for (let k = 0; k < evInfo.actions.length; k++) {
             const actionobj = evInfo.actions[k];
-            evActions.push(new ActionObject<ContextGeneral<string>,EventObject>(actionobj.type, actionobj.params, actionobj.event));
+            const _ev = actionobj.event;
+            let ev: EventClassExternal | null = null;
+            if (_ev !== null) {
+              ev = new EventClassExternal(_ev.type, _ev.params);
+            }
+            evActions.push(new ActionObject<ContextGeneral<string>,EventObject>(actionobj.type, actionobj.params, ev));
         }
         onevents.push(new TransitionExternal<ContextGeneral<string>,EventObject>(
             stateInfoOn[j],

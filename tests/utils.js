@@ -23,11 +23,16 @@ function parseMachineStates(configStates = {}) {
                 oactions = [oactions];
             }
             for (let i = 0; i < oactions.length; i++) {
+                let ev = oactions[i].event;
+                if (ev) {
+                    ev = {type: ev.type || "", params: ev.params || []}
+                }
                 const action = {
                     ...oactions[i],
                     params: Object.keys(oactions[i].params || {}).map(stateName => {
                         return {key: stateName, value: oactions[i].params[stateName]};
                     }),
+                    event: ev,
                 }
                 actions.push(action);
             }
@@ -61,5 +66,5 @@ export function raise(event, options = {}) {
     _raise.event = event;
     // _raise.id = options.id;
     // _raise.delay = options.delay;
-    return raise;
+    return _raise;
 }

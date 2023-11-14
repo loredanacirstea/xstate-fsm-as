@@ -28,9 +28,22 @@ function runFnWrapped (storage = {}, env = {}) {
 
 let machineConfig = {
     id: "Semaphore",
-    initial: "red",
+    initial: "uninitialized",
     context: [],
     states: [
+        {
+            name: "uninitialized",
+            on: [{
+                name: "initialize",
+                target: "red",
+                guard: "",
+                    actions: [],
+            }],
+            exit: [],
+            entry: [],
+            initial: "",
+            states: [],
+        },
         {
             name: "red",
             on: [
@@ -67,9 +80,22 @@ let machineConfig = {
 
 const machineConfig2 = {
     id: "Lock/unlock",
-    initial: "unlock",
+    initial: "uninitialized",
     context: [{key: "counter", value: "0"}],
     states: [
+        {
+            name: "uninitialized",
+            on: [{
+                name: "initialize",
+                target: "unlocked",
+                guard: "",
+                    actions: [],
+            }],
+            exit: [],
+            entry: [],
+            initial: "",
+            states: [],
+        },
         {
             name: "unlock",
             on: [
@@ -130,8 +156,15 @@ const machineConfig2Orig = {
       counter: "0",
     },
     id: "lock-count",
-    initial: "unlocked",
+    initial: "uninitialized",
     states: {
+        uninitialized: {
+            on: {
+              initialize: {
+                target: "unlocked",
+              },
+            },
+        },
       unlocked: {
         on: {
           lock: {
@@ -163,8 +196,15 @@ const machineConfig3Orig = {
       counter: "0",
     },
     id: "Untitled",
-    initial: "unlocked",
+    initial: "uninitialized",
     states: {
+        uninitialized: {
+            on: {
+              initialize: {
+                target: "unlocked",
+              },
+            },
+        },
       unlocked: {
         on: {
           lock: {
@@ -205,8 +245,15 @@ const machineWithGuard = {
       counter: "0",
     },
     id: "lock-count-guard",
-    initial: "unlocked",
+    initial: "uninitialized",
     states: {
+        uninitialized: {
+            on: {
+              initialize: {
+                target: "unlocked",
+              },
+            },
+        },
       unlocked: {
         on: {
           lock: {
@@ -248,13 +295,13 @@ const erc20Machine1Orig = {
         on: {
           initialize: {
             target: "unlocked",
-            actions: {
-              type: "mint",
-              params: {
-                admin: "",
-                adminBalance: "",
-              },
-            },
+            // actions: {
+            //   type: "mint",
+            //   params: {
+            //     admin: "",
+            //     adminBalance: "",
+            //   },
+            // },
           },
         },
       },
@@ -478,6 +525,7 @@ async function runTests() {
 
     // machine 5 - erc20
     const admin = new Uint8Array([1,1,1,1,1,1]);
+    const sender = new Uint8Array([1,1,1,1,1,2]);
     erc20Machine1Orig.context.admin = uint8ArrayToHex(admin);
     // erc20Machine1Orig.context.supply = "1000000";
     erc20Machine1Orig.context.tokenName = "Token";
@@ -487,16 +535,26 @@ async function runTests() {
     console.log("==erc20Machine1Orig==");
     console.log(JSON.stringify(machineConfig));
     runFnOwner = runFnWrapped(storage, {currentCall: {sender: admin.buffer}});
-    runFnOther = runFnWrapped(storage, {currentCall: {sender: new Uint8Array([1,1,1,1,1,2]).buffer}});
+    runFnOther = runFnWrapped(storage, {currentCall: {sender: sender.buffer}});
 
     // Create the machine
     result = await runFnOwner("create", machineConfig)
     machineId = JSON.parse(decodeFromUtf8Array(result)).id;
     assert.strictEqual(machineId, 4);
 
+    // Check state is unlocked
+    currentState = await runFn("getCurrentState", {id: machineId});
+    console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
+    assert.strictEqual(decodeFromUtf8Array(currentState), "active");
+
     // Apply event
-    await runFnOwner("run", {id: machineId, event: "mint"});
-    console.log("!!!!!!! -> increment");
+    await runFnOwner("run", {id: machineId, event: {type: "mint", params: [uint8ArrayToHex(sender), "10"]}});
+    console.log("!!!!!!! -> minted");
+
+    result = await runFn("getContextValue", {id: machineId, key: "balance_4_" + uint8ArrayToHex(sender)});
+    console.log("!!!!!getContextValue", decodeFromUtf8Array(result))
+    currentState = decodeFromUtf8Array(result);
+    assert.strictEqual(currentState, "10");
 }
 
 runTests();

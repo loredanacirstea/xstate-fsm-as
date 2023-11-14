@@ -21,6 +21,7 @@ import {
   State,
   Config,
   ConfigExternal,
+  States,
   StateInfo,
   StateInfoClass,
   StateInfoEvents,
@@ -333,9 +334,14 @@ function getBalance<
     ctx: TContext,
     addr: string,
 ): i64 {
-    const balancestr = ctx.get(getBalanceKey(id, addr));
-    const balance = parseInt(balancestr);
-    return i64(balance);
+    console.log("--getBalance--" + id.toString() + "--" + addr);
+    const key = getBalanceKey(id, addr);
+    if (ctx.has(key)) {
+        const balancestr = ctx.get(key);
+        const balance = parseInt(balancestr);
+        return i64(balance);
+    }
+    return i64(0);
 }
 
 function setBalance<
@@ -347,12 +353,13 @@ function setBalance<
     amount: i64,
 ): TContext {
     const key = getBalanceKey(id, addr);
+    console.log("--setBalance--" + key);
     ctx.set(key, amount.toString());
     return ctx;
 }
 
 function getBalanceKey(id: i32, addr: string): string {
-    return "balance_" + id.toString() + addr;
+    return "balance_" + id.toString() + "_" + addr;
 }
 
 function mint<
@@ -365,6 +372,7 @@ function mint<
     params: ActionParam[],
     event: TEvent,
 ): TContext {
+    console.log("--mint--")
     const addr = event.params[0];
     const amount = parseInt(event.params[1]);
     let balance = getBalance(id, ctx, addr);
@@ -497,6 +505,7 @@ export class Service<
   start(): Service<TContext, TEvent, TState> {
     this.status = InterpreterStatus.Running;
     executeStateActions<TContext, TEvent, TState>(this.id, this.state, INIT_EVENT);
+    this.send(INIT_EVENT);
     return this;
   }
 
@@ -543,7 +552,12 @@ export class ServiceExternal<
     const stateactions: Array<ActionObject<ContextGeneral<string>,EventObject>> = [];
     for (let i = 0; i < service.state.actions.length; i++) {
         const act = service.state.actions[i];
-        stateactions.push(new ActionObject(act.type, act.params, act.event));
+        const _ev = act.event;
+        let ev: EventClassExternal | null = null;
+        if (_ev !== null) {
+            ev = new EventClassExternal(_ev.type, _ev.params);
+        }
+        stateactions.push(new ActionObject(act.type, act.params, ev));
     }
     const state = new StateClassExternal<ContextGeneral<string>,EventObject, Typestate<ContextGeneral<string>>>(
         service.state.value,
@@ -624,7 +638,12 @@ export class MachineExternal<
     const iniactions: Array<ActionObject<ContextGeneral<string>,EventObject>> = [];
     for (let i = 0; i < machine.initialState.actions.length; i++) {
         const act = machine.initialState.actions[i];
-        iniactions.push(new ActionObject(act.type, act.params, act.event));
+        const _ev = act.event;
+        let ev: EventClassExternal | null = null;
+        if (_ev !== null) {
+            ev = new EventClassExternal(_ev.type, _ev.params);
+        }
+        iniactions.push(new ActionObject(act.type, act.params, ev));
     }
 
     const initialState = new StateClassExternal<ContextGeneral<string>,EventObject, Typestate<ContextGeneral<string>>>(
@@ -705,7 +724,6 @@ class ServiceMap<
   }
 }
 
-
 export class Machine<
   TContext extends Map<string,string>,
   TEvent extends EventObject,
@@ -735,7 +753,13 @@ export class Machine<
     const context = state.context;
     const eventObject = event;
     console.log("----transition-config.states-" + this.config.states.keys().join(","));
-    const stateConfig = this.config.states.get(value);
+    // const stateConfig = this.config.states.get(value);
+    const stateConfig = findStateInfo<TContext,TEvent,TState>(this.config.states, value);
+    console.log("--findStateInfo--END=stateConfig-")
+    if (!stateConfig) {
+        wasmx.revert(String.UTF8.encode("state not found: " + value));
+        throw new Error("state not found: " + value);
+    }
     console.log("----transition-stateConfig-" + stateConfig.on.keys().join(","));
     console.log("--eventObject.type--" + eventObject.type);
 
@@ -773,7 +797,14 @@ export class Machine<
 
         const nextStateValue = target || value;
         console.log("----transition-nextStateValue--" + nextStateValue)
-        const nextStateConfig = this.config.states.get(nextStateValue);
+        // const nextStateConfig = this.config.states.get(nextStateValue);
+
+        const nextStateConfig = findStateInfo<TContext,TEvent,TState>(this.config.states, nextStateValue);
+        console.log("--findStateInfo--END=nextStateConfig-")
+        if (!nextStateConfig) {
+            wasmx.revert(String.UTF8.encode("state not found: " + nextStateValue));
+            throw new Error("state not found: " + nextStateValue);
+        }
 
         console.log("----transition-nextStateConfig--" + nextStateConfig.on.keys().join(","))
 
@@ -830,8 +861,21 @@ export class Machine<
           const nextContext = res.ctx;
           const assigned = res.assigned;
 
-          const resolvedTarget = target || value;
+          let resolvedTarget = target || value;
           console.log("----resolvedTarget-" + resolvedTarget)
+
+          // child states! we choose the first one
+          const stateConfig = findStateInfo<TContext, TEvent, TState>(this.config.states, resolvedTarget);
+          console.log("--findStateInfo--END=")
+          if (!stateConfig) {
+            wasmx.revert(String.UTF8.encode("state not found: " + resolvedTarget));
+            throw new Error("state not found: " + resolvedTarget);
+          }
+          console.log("--findStateInfo--END1=")
+          if (stateConfig.states !== null && stateConfig.states.keys().length > 0) {
+            resolvedTarget = stateConfig.states.keys()[0];
+          }
+          console.log("--findStateInfo--END2=")
 
           return new State<TContext, TEvent, TState>(resolvedTarget, nextContext, nonAssignActions, target !== value || nonAssignActions.length > 0 || assigned);
           // matches: createMatcher(resolvedTarget)
@@ -1039,4 +1083,27 @@ export function loadServiceFromId<
     const serviceData = wasmxwrap.loadService(id);
     const service = JSON.parse<ServiceExternal<TContext, TEvent, TState>>(serviceData);
     return service.toInternal();
+}
+
+// TODO: nested state names as paths unlocked.active.
+export function findStateInfo<
+    TContext extends Map<string,string>,
+    TEvent extends EventObject,
+    TState extends Typestate<TContext>,
+>(
+    states: States<TContext, TEvent>,
+    stateName: string,
+): StateInfo<TContext, TEvent> | null {
+    const keys = states.keys();
+    console.log("--findStateInfo--" + stateName + "---" + keys.join(","));
+    for (let i = 0; i < keys.length; i++) {
+        console.log("--findStateInfo--" + keys[i]);
+        const stateinfo = states.get(keys[i]);
+        if (keys[i] === stateName) return stateinfo;
+        if (stateinfo.states && stateinfo.states.keys().length > 0) {
+            const info = findStateInfo<TContext, TEvent, TState>(stateinfo.states, stateName);
+            if (info !== null) return info;
+        }
+    }
+    return null;
 }
