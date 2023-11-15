@@ -1,4 +1,3 @@
-
 export function parseMachine(origConfig) {
     const newConfig = {
         ...origConfig,
@@ -61,9 +60,16 @@ export function uint8ArrayToHex(arr) {
 }
 
 export function raise(event, options = {}) {
+    const _event = {type: event.type, params: []}
+    const evkeys = Object.keys(event);
+    for (let i = 0; i < evkeys.length; i++) {
+        if (evkeys[i] !== "type") {
+            _event.params.push({key: evkeys[i], value: event[evkeys[i]]})
+        }
+    }
     const _raise = {};
     _raise.type = 'xstate.raise';
-    _raise.event = event;
+    _raise.event = _event;
     // _raise.id = options.id;
     // _raise.delay = options.delay;
     return _raise;

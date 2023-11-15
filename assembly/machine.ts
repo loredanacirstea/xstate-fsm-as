@@ -264,7 +264,7 @@ function executeStateActions<
 ): void {
   for (let i = 0; i < state.actions.length; i++) {
     const action = state.actions[i];
-    console.log("---action-raise?--" + action.type)
+    console.log("---action-raise?--" + action.type);
     // const exec = action.exec;
     // if (exec) {
     //   exec(state.context, event);
@@ -333,11 +333,28 @@ function hasEnoughBalance<
   params: ActionParam[],
   event: TEvent,
 ): boolean {
-    const from = event.params[0];
-    const amount = event.params[2];
+    let from: string = "";
+    let amount: f64 = 0;
+    for (let i = 0; i < event.params.length; i++) {
+        if (event.params[i].key === "from") {
+            from = event.params[i].value;
+            continue;
+        }
+        if (event.params[i].key === "amount") {
+            amount = parseInt(event.params[i].value);
+            continue;
+        }
+    }
+    if (from === "") {
+        wasmx.revert(String.UTF8.encode("move event empty from address"));
+        throw new Error("move event empty from address");
+    }
+    if (amount === 0) {
+        return true;
+    }
     const balancestr = ctx.get(getBalanceKey(id, from));
     const balance = parseInt(balancestr);
-    return balance >= parseInt(amount);
+    return balance >= amount;
 }
 
 function getBalance<
@@ -385,9 +402,25 @@ function mint<
     params: ActionParam[],
     event: TEvent,
 ): TContext {
-    console.log("--mint--")
-    const addr = event.params[0];
-    const amount = parseInt(event.params[1]);
+    let addr: string = "";
+    let amount: i64 = 0;
+    for (let i = 0; i < event.params.length; i++) {
+        if (event.params[i].key === "to") {
+            addr = event.params[i].value;
+            continue;
+        }
+        if (event.params[i].key === "amount") {
+            amount = i64(parseInt(event.params[i].value));
+            continue;
+        }
+    }
+    if (addr === "") {
+        wasmx.revert(String.UTF8.encode("mint event empty address"));
+        throw new Error("mint event empty address");
+    }
+    if (amount === 0) {
+        return ctx;
+    }
     let balance = getBalance(id, ctx, addr);
     balance += i64(amount);
     return setBalance(id, ctx, addr, balance);
@@ -403,9 +436,37 @@ function move<
     params: ActionParam[],
     event: TEvent,
 ): TContext {
-    const from = event.params[0];
-    const to = event.params[1];
-    const amount = parseInt(event.params[2]);
+    console.log("--move--" + event.type + "--" + event.params.length.toString());
+    console.log("--move--" + params.length.toString());
+
+    let from: string = "";
+    let to: string = "";
+    let amount: i64 = 0;
+    for (let i = 0; i < event.params.length; i++) {
+        if (event.params[i].key === "from") {
+            from = event.params[i].value;
+            continue;
+        }
+        if (event.params[i].key === "to") {
+            to = event.params[i].value;
+            continue;
+        }
+        if (event.params[i].key === "amount") {
+            amount = i64(parseInt(event.params[i].value));
+            continue;
+        }
+    }
+    if (from === "") {
+        wasmx.revert(String.UTF8.encode("move event empty from address"));
+        throw new Error("move event empty from address");
+    }
+    if (to === "") {
+        wasmx.revert(String.UTF8.encode("move event empty to address"));
+        throw new Error("move event empty to address");
+    }
+    if (amount === 0) {
+        return ctx;
+    }
     let balanceFrom = getBalance(id, ctx, from);
     let balanceTo = getBalance(id, ctx, to);
     balanceFrom -= i64(amount);
@@ -424,9 +485,34 @@ function logTransfer<
     params: ActionParam[],
     event: TEvent,
 ): TContext {
-    const from = event.params[0];
-    const to = event.params[1];
-    const amount = parseInt(event.params[2]);
+    let from: string = "";
+    let to: string = "";
+    let amount: i64 = 0;
+    for (let i = 0; i < event.params.length; i++) {
+        if (event.params[i].key === "from") {
+            from = event.params[i].value;
+            continue;
+        }
+        if (event.params[i].key === "to") {
+            to = event.params[i].value;
+            continue;
+        }
+        if (event.params[i].key === "amount") {
+            amount = i64(parseInt(event.params[i].value));
+            continue;
+        }
+    }
+    if (from === "") {
+        wasmx.revert(String.UTF8.encode("move event empty from address"));
+        throw new Error("move event empty from address");
+    }
+    if (to === "") {
+        wasmx.revert(String.UTF8.encode("move event empty to address"));
+        throw new Error("move event empty to address");
+    }
+    if (amount === 0) {
+        return ctx;
+    }
     const topic0 = hexToUint8Array(id.toString(16));
     const topic1 = hexToUint8Array(from);
     const topic2 = hexToUint8Array(to);
@@ -843,8 +929,29 @@ export class Machine<
             //   allActions.push(stateConfig.exit[i]);
             // }
             for (let i = 0; i < actions.length; i++) {
-                console.log("--raise?-" + actions[i].type + "---" + actions[i].params.join("--"));
-              allActions.push(actions[i]);
+                const act = actions[i];
+                if (act.type === RaiseActionType) {
+                    // We are looking through parameters of the current event
+                    // and adding them in the raised event if the key values match
+                    // TODO - another way?
+                    console.log("--raise?0-" + act.type);
+                    if (act.event === null) {
+                        wasmx.revert(String.UTF8.encode("raise action is missing event"));
+                        throw new Error("raise action is missing event");
+                    }
+                    console.log("--raise?1-" + act.event!.type);
+                    console.log("--raise?11-" + act.event!.params.length.toString());
+                    for (let k = 0; k < act.event!.params.length; k++) {
+                        console.log("--raise?2-param-" + act.event!.params[k].key + "--" + act.event!.params[k].value);
+                        const key = act.event!.params[k].key;
+                        for (let x = 0; x < event.params.length; x++) {
+                            if (event.params[x].key === key) {
+                                act.event!.params[k].value = event.params[x].value;
+                            }
+                        }
+                    }
+                }
+                allActions.push(act);
             }
             // for (let i = 0; i < stateConfig.exit.length; i++) {
             //   allActions.push(nextStateConfig.entry[i]);

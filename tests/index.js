@@ -313,7 +313,7 @@ const erc20Machine1Orig = {
               transfer: {
                 target: "intransfer",
                 guard: "hasEnoughBalance",
-                actions: raise({ type: "move" }),
+                actions: raise({ from: "from", to: "to", amount: "amount", type: "move" }),
               },
               mint: {
                 target: "active",
@@ -548,7 +548,7 @@ async function runTests() {
     assert.strictEqual(decodeFromUtf8Array(currentState), "active");
 
     // Mint tokens for admin
-    await runFnOwner("run", {id: machineId, event: {type: "mint", params: [uint8ArrayToHex(admin), "100"]}});
+    await runFnOwner("run", {id: machineId, event: {type: "mint", params: [{key: "to", value: uint8ArrayToHex(admin)}, {key: "amount", value: "100"}]}});
     console.log("!!!!!!! -> minted");
 
     result = await runFn("getContextValue", {id: machineId, key: "balance_4_" + uint8ArrayToHex(admin)});
@@ -557,7 +557,7 @@ async function runTests() {
     assert.strictEqual(currentState, "100");
 
     // Transfer tokens from owner to sender
-    await runFnOwner("run", {id: machineId, event: {type: "transfer", params: [uint8ArrayToHex(admin), uint8ArrayToHex(sender), "10"]}});
+    await runFnOwner("run", {id: machineId, event: {type: "transfer", params: [{key: "from", value: uint8ArrayToHex(admin)}, {key: "to", value: uint8ArrayToHex(sender)}, {key: "amount", value: "10"}]}});
     console.log("!!!!!!! -> transferred");
 
     result = await runFn("getContextValue", {id: machineId, key: "balance_4_" + uint8ArrayToHex(sender)});

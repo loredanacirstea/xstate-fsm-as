@@ -10,14 +10,14 @@ export enum InterpreterStatus {
 
 export interface EventObject {
   type: string;
-  params: string[];
+  params: ActionParam[];
 }
 
 export class EventClass implements EventObject {
   type: string;
-  params: string[];
+  params: ActionParam[];
 
-  constructor(type: string, params: string[]) {
+  constructor(type: string, params: ActionParam[]) {
     this.type = type;
     this.params = params;
   }
@@ -27,9 +27,9 @@ export class EventClass implements EventObject {
 @serializable
 export class EventClassExternal {
   type: string;
-  params: string[];
+  params: ActionParam[];
 
-  constructor(type: string, params: string[]) {
+  constructor(type: string, params: ActionParam[]) {
     this.type = type;
     this.params = params;
   }
@@ -37,7 +37,7 @@ export class EventClassExternal {
 
 export class InitEvent implements EventObject {
   type: string = 'initialize';
-  params: string[] = [];
+  params: ActionParam[] = [];
 }
 
 export type ContextGeneral<T> =  Map<string,T>
