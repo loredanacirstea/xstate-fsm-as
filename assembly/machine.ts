@@ -130,6 +130,7 @@ function handleActions<
 
   for (let i = 0; i < actions.length; i++) {
     const action = actions[i];
+    console.log("--handleActions--type-" + action.type);
     if (action.type === ASSIGN_ACTION) {
       assigned = true;
       let tmpContext: TContext = mergeMap<string>(nextContext, new Map());
@@ -181,6 +182,7 @@ TState extends Typestate<TContext>,
 ): boolean {
     if (guard === "isAdmin") return isAdmin<TContext, TEvent, TState>(id, ctx, []);
     if (guard === "hasEnoughBalance") return hasEnoughBalance<TContext, TEvent, TState>(id, ctx, [], event);
+    if (guard === "hasEnoughAllowance") return hasEnoughAllowance<TContext, TEvent, TState>(id, ctx, [], event);
 
     return true;
 }
@@ -264,13 +266,15 @@ function executeStateActions<
 ): void {
   for (let i = 0; i < state.actions.length; i++) {
     const action = state.actions[i];
-    console.log("---action-raise?--" + action.type);
+    const actionType = action.type;
+    console.log("---action-raise?--" + actionType);
     // const exec = action.exec;
     // if (exec) {
     //   exec(state.context, event);
     // }
-    if (action.type === RaiseActionType) {
+    if (actionType === RaiseActionType) {
         const ev = action.event;
+        console.log("---RAISE!!-" + ev!.type);
         if (ev === null) {
             wasmx.revert(String.UTF8.encode("raise action is missing event"));
             throw new Error("raise action is missing event");
@@ -279,29 +283,36 @@ function executeStateActions<
         service.send(_event);
         return;
     }
-    if (event.type === "mint") {
+    if (actionType === "mint") {
         const newctx = mint<TContext, TEvent, TState>(id, state.context, action.params, event);
         state.context = newctx;
-        return;
+        continue;
     }
-    if (event.type === "move") {
+    if (actionType === "move") {
         const newctx = move<TContext, TEvent, TState>(id, state.context, action.params, event);
         state.context = newctx;
-        return;
+        continue;
     }
-    if (event.type === "logTransfer") {
+    if (actionType === "approve") {
+        const newctx = approve<TContext, TEvent, TState>(id, state.context, action.params, event);
+        state.context = newctx;
+        continue;
+    }
+    if (actionType === "logTransfer") {
+        console.log("--execute logTransfer-")
         const newctx = logTransfer<TContext, TEvent, TState>(id, state.context, action.params, event);
         state.context = newctx;
-        return;
+        continue;
     }
-    if (event.type === "increment") {
+    if (actionType === "increment") {
       const newctx = increment<TContext, TEvent, TState>(state.context, action.params);
       state.context = newctx;
-      return;
+      continue;
     }
-    if (event.type === "log") {
+    if (actionType === "log") {
         const newctx = log<TContext, TEvent, TState>(state.context, action.params);
         state.context = newctx;
+        continue
     }
     // state.context
     // action.type
@@ -334,14 +345,14 @@ function hasEnoughBalance<
   event: TEvent,
 ): boolean {
     let from: string = "";
-    let amount: f64 = 0;
+    let amount: i64 = 0;
     for (let i = 0; i < event.params.length; i++) {
         if (event.params[i].key === "from") {
             from = event.params[i].value;
             continue;
         }
         if (event.params[i].key === "amount") {
-            amount = parseInt(event.params[i].value);
+            amount = i64(parseInt(event.params[i].value));
             continue;
         }
     }
@@ -352,9 +363,42 @@ function hasEnoughBalance<
     if (amount === 0) {
         return true;
     }
-    const balancestr = ctx.get(getBalanceKey(id, from));
-    const balance = parseInt(balancestr);
+    const balance = getBalance(id, ctx, from)
     return balance >= amount;
+}
+
+function hasEnoughAllowance<
+  TContext extends Map<string,string>,
+  TEvent extends EventObject,
+  TState extends Typestate<TContext>,
+>(
+  id: i32,
+  ctx: TContext,
+  params: ActionParam[],
+  event: TEvent,
+): boolean {
+    let owner: string = "";
+    let amount: i64 = 0;
+    for (let i = 0; i < event.params.length; i++) {
+        if (event.params[i].key === "from") {
+            owner = event.params[i].value;
+            continue;
+        }
+        if (event.params[i].key === "amount") {
+            amount = i64(parseInt(event.params[i].value));
+            continue;
+        }
+    }
+    if (owner === "") {
+        wasmx.revert(String.UTF8.encode("move event empty from address"));
+        throw new Error("move event empty from address");
+    }
+    if (amount === 0) {
+        return true;
+    }
+    const caller = wasmxwrap.getCaller();
+    const allowance = getAllowance(id, ctx, owner, caller);
+    return allowance >= amount;
 }
 
 function getBalance<
@@ -369,8 +413,10 @@ function getBalance<
     if (ctx.has(key)) {
         const balancestr = ctx.get(key);
         const balance = parseInt(balancestr);
+        console.log("--getBalance--" + balancestr);
         return i64(balance);
     }
+    console.log("--getBalance--0");
     return i64(0);
 }
 
@@ -383,13 +429,50 @@ function setBalance<
     amount: i64,
 ): TContext {
     const key = getBalanceKey(id, addr);
-    console.log("--setBalance--" + key);
+    console.log("--setBalance--" + key + "-" + amount.toString());
+    ctx.set(key, amount.toString());
+    return ctx;
+}
+
+function getAllowance<
+    TContext extends Map<string,string>,
+>(
+    id: i32,
+    ctx: TContext,
+    owner: string,
+    spender: string,
+): i64 {
+    const key = getAllowanceKey(id, owner, spender);
+    console.log("--getAllowance--" + key);
+    if (ctx.has(key)) {
+        const allowancestr = ctx.get(key);
+        const allowance = parseInt(allowancestr);
+        return i64(allowance);
+    }
+    return i64(0);
+}
+
+function setAllowance<
+    TContext extends Map<string,string>,
+>(
+    id: i32,
+    ctx: TContext,
+    owner: string,
+    spender: string,
+    amount: i64,
+): TContext {
+    const key = getAllowanceKey(id, owner, spender);
+    console.log("--setAllowance--" + key + "-" +  amount.toString());
     ctx.set(key, amount.toString());
     return ctx;
 }
 
 function getBalanceKey(id: i32, addr: string): string {
     return "balance_" + id.toString() + "_" + addr;
+}
+
+function getAllowanceKey(id: i32, owner: string, spender: string): string {
+    return "allowance_" + id.toString() + "_" + owner + "_" + spender;
 }
 
 function mint<
@@ -467,12 +550,52 @@ function move<
     if (amount === 0) {
         return ctx;
     }
+    console.log("--move--" + from + "-" + to + "-" + amount.toString());
     let balanceFrom = getBalance(id, ctx, from);
     let balanceTo = getBalance(id, ctx, to);
     balanceFrom -= i64(amount);
     balanceTo += i64(amount);
     ctx = setBalance(id, ctx, from, balanceFrom);
     return setBalance(id, ctx, to, balanceTo);
+}
+
+function approve<
+  TContext extends Map<string,string>,
+  TEvent extends EventObject,
+  TState extends Typestate<TContext>,
+>(
+    id: i32,
+    ctx: TContext,
+    params: ActionParam[],
+    event: TEvent,
+): TContext {
+    console.log("--approve--" + event.type + "--" + event.params.length.toString());
+    console.log("--approve--" + params.length.toString());
+
+    let spender: string = "";
+    let amount: i64 = 0;
+    for (let i = 0; i < event.params.length; i++) {
+        if (event.params[i].key === "spender") {
+            spender = event.params[i].value;
+            continue;
+        }
+        if (event.params[i].key === "amount") {
+            amount = i64(parseInt(event.params[i].value));
+            continue;
+        }
+    }
+    if (spender === "") {
+        wasmx.revert(String.UTF8.encode("approve event empty address"));
+        throw new Error("approve event empty address");
+    }
+    console.log("--approve--" + spender + "-" + amount.toString());
+    if (amount === 0) {
+        return ctx;
+    }
+    const owner = wasmxwrap.getCaller();
+    let allowance = getAllowance(id, ctx, owner, spender);
+    allowance += amount;
+    return setAllowance(id, ctx, owner, spender, allowance);
 }
 
 function logTransfer<
@@ -942,15 +1065,24 @@ export class Machine<
                     console.log("--raise?1-" + act.event!.type);
                     console.log("--raise?11-" + act.event!.params.length.toString());
                     for (let k = 0; k < act.event!.params.length; k++) {
-                        console.log("--raise?2-param-" + act.event!.params[k].key + "--" + act.event!.params[k].value);
                         const key = act.event!.params[k].key;
-                        for (let x = 0; x < event.params.length; x++) {
-                            if (event.params[x].key === key) {
-                                act.event!.params[k].value = event.params[x].value;
+                        const value = act.event!.params[k].value;
+                        console.log("--raise?2-param-" + key + "--" + value);
+                        if (value.includes("()")) {
+                            // TODO have a map with all provided functions and guards
+                            if (value === "getCaller()") {
+                                act.event!.params[k].value = wasmxwrap.getCaller();
+                            }
+                        } else {
+                            for (let x = 0; x < event.params.length; x++) {
+                                if (event.params[x].key === value) {
+                                    act.event!.params[k].value = event.params[x].value;
+                                }
                             }
                         }
                     }
                 }
+                console.log("--raise? add action!-" + act.type);
                 allActions.push(act);
             }
             // for (let i = 0; i < stateConfig.exit.length; i++) {
@@ -998,6 +1130,8 @@ export class Machine<
             resolvedTarget = stateConfig.states.keys()[0];
           }
           console.log("--findStateInfo--END2=");
+
+          console.log("--resolvedTarget=" + resolvedTarget);
 
           return new State<TContext, TEvent, TState>(resolvedTarget, nextContext, nonAssignActions, target !== value || nonAssignActions.length > 0 || assigned);
           // matches: createMatcher(resolvedTarget)
@@ -1219,6 +1353,13 @@ export function findStateInfo<
     states: States<TContext, TEvent>,
     stateName: string,
 ): StateInfo<TContext, TEvent> | null {
+    if (stateName.at(0) === "#") {
+        // "#ERC20.unlocked.active"
+        // TODO support multiple machines
+        const statePath = stateName.substring(1).split(".").slice(1)
+        return findStateInfoByPath<TContext, TEvent, TState>(states, statePath)
+    }
+    // TODO here, we should only look in the current state, not the machine states
     const keys = states.keys();
     console.log("--findStateInfo--" + stateName + "---" + keys.join(","));
     for (let i = 0; i < keys.length; i++) {
@@ -1231,4 +1372,29 @@ export function findStateInfo<
         }
     }
     return null;
+}
+
+export function findStateInfoByPath<
+    TContext extends Map<string,string>,
+    TEvent extends EventObject,
+    TState extends Typestate<TContext>,
+>(
+    states: States<TContext, TEvent>,
+    statePath: string[],
+): StateInfo<TContext, TEvent> | null {
+    let currentStates = states;
+    let state: StateInfo<TContext, TEvent> | null = null;
+    console.log("--findStateInfoByPath--" + statePath.join("."));
+    for (let k = 0; k < statePath.length; k++) {
+        const currentStateName = statePath[k];
+        state = currentStates.get(currentStateName);
+        if (k < (statePath.length - 1)) {
+            if (!state.states || state.states.keys().length === 0) {
+                wasmx.revert(String.UTF8.encode("findStateInfoByPath: state does not have childstates: " + statePath.join(".")));
+                throw new Error("findStateInfoByPath: state does not have childstates: " + statePath.join("."));
+            }
+            currentStates = state.states;
+        }
+    }
+    return state;
 }

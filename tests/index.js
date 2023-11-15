@@ -295,13 +295,6 @@ const erc20Machine1Orig = {
         on: {
           initialize: {
             target: "unlocked",
-            // actions: {
-            //   type: "mint",
-            //   params: {
-            //     admin: "",
-            //     adminBalance: "",
-            //   },
-            // },
           },
         },
       },
@@ -312,8 +305,7 @@ const erc20Machine1Orig = {
             on: {
               transfer: {
                 target: "intransfer",
-                guard: "hasEnoughBalance",
-                actions: raise({ from: "from", to: "to", amount: "amount", type: "move" }),
+                actions: raise({ from: "getCaller()", to: "to", amount: "amount", type: "move" }),
               },
               mint: {
                 target: "active",
@@ -322,21 +314,27 @@ const erc20Machine1Orig = {
                   type: "mint",
                 },
               },
+              approve: {
+                target: "active",
+                actions: {
+                  type: "approve",
+                },
+              },
+              transferFrom: {
+                target: "intransfer",
+                guard: "hasEnoughAllowance",
+                actions: raise({ from: "from", to: "to", amount: "amount", type: "move" }),
+              },
             },
           },
           intransfer: {
-            entry: {
-              type: "setCurrentTransfer",
-            },
-            exit: {
-              type: "deleteCurrentTransfer",
-            },
             initial: "unmoved",
             states: {
               unmoved: {
                 on: {
                   move: {
                     target: "moved",
+                    guard: "hasEnoughBalance",
                     actions: [
                       {
                         type: "move",
@@ -526,6 +524,7 @@ async function runTests() {
     // machine 5 - erc20
     const admin = new Uint8Array([1,1,1,1,1,1]);
     const sender = new Uint8Array([1,1,1,1,1,2]);
+    const sender2 = new Uint8Array([1,1,1,1,1,3]);
     erc20Machine1Orig.context.admin = uint8ArrayToHex(admin);
     // erc20Machine1Orig.context.supply = "1000000";
     erc20Machine1Orig.context.tokenName = "Token";
@@ -535,14 +534,14 @@ async function runTests() {
     console.log("==erc20Machine1Orig==");
     console.log(JSON.stringify(machineConfig));
     runFnOwner = runFnWrapped(storage, {currentCall: {sender: admin.buffer}});
-    runFnOther = runFnWrapped(storage, {currentCall: {sender: sender.buffer}});
+    runFnOther = runFnWrapped(storage, {currentCall: {sender: sender2.buffer}});
 
     // Create the machine
     result = await runFnOwner("create", machineConfig)
     machineId = JSON.parse(decodeFromUtf8Array(result)).id;
     assert.strictEqual(machineId, 4);
 
-    // Check state is unlocked
+    // Check state is active
     currentState = await runFn("getCurrentState", {id: machineId});
     console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
     assert.strictEqual(decodeFromUtf8Array(currentState), "active");
@@ -556,8 +555,13 @@ async function runTests() {
     currentState = decodeFromUtf8Array(result);
     assert.strictEqual(currentState, "100");
 
+    result = await runFn("getContextValue", {id: machineId, key: "balance_4_" + uint8ArrayToHex(sender)});
+    console.log("!!!!!getContextValue", decodeFromUtf8Array(result))
+    currentState = decodeFromUtf8Array(result);
+    assert.strictEqual(currentState, "");
+
     // Transfer tokens from owner to sender
-    await runFnOwner("run", {id: machineId, event: {type: "transfer", params: [{key: "from", value: uint8ArrayToHex(admin)}, {key: "to", value: uint8ArrayToHex(sender)}, {key: "amount", value: "10"}]}});
+    await runFnOwner("run", {id: machineId, event: {type: "transfer", params: [{key: "to", value: uint8ArrayToHex(sender)}, {key: "amount", value: "10"}]}});
     console.log("!!!!!!! -> transferred");
 
     result = await runFn("getContextValue", {id: machineId, key: "balance_4_" + uint8ArrayToHex(sender)});
@@ -569,6 +573,37 @@ async function runTests() {
     console.log("!!!!!getContextValue", decodeFromUtf8Array(result))
     currentState = decodeFromUtf8Array(result);
     assert.strictEqual(currentState, "90");
+
+    // Check state is active
+    currentState = await runFn("getCurrentState", {id: machineId});
+    console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
+    assert.strictEqual(decodeFromUtf8Array(currentState), "#ERC20.unlocked.active");
+
+    // Approve tokens
+    await runFnOwner("run", {id: machineId, event: {type: "approve", params: [{key: "spender", value: uint8ArrayToHex(sender2)}, {key: "amount", value: "10"}]}});
+    console.log("!!!!!!! -> approved");
+
+    // check allowance
+    result = await runFn("getContextValue", {id: machineId, key: "allowance_4_" + uint8ArrayToHex(admin) + "_" + uint8ArrayToHex(sender2)});
+    console.log("!!!!!getContextValue", decodeFromUtf8Array(result))
+    currentState = decodeFromUtf8Array(result);
+    assert.strictEqual(currentState, "10");
+
+    // TransferFrom tokens from owner to sender
+    await runFnOther("run", {id: machineId, event: {type: "transferFrom", params: [{key: "from", value: uint8ArrayToHex(admin)}, {key: "to", value: uint8ArrayToHex(sender)}, {key: "amount", value: "10"}]}});
+    console.log("!!!!!!! -> transferred");
+
+    // check admin balance
+    result = await runFn("getContextValue", {id: machineId, key: "balance_4_" + uint8ArrayToHex(admin)});
+    console.log("!!!!!getContextValue", decodeFromUtf8Array(result))
+    currentState = decodeFromUtf8Array(result);
+    assert.strictEqual(currentState, "80");
+
+    // check sender balance
+    result = await runFn("getContextValue", {id: machineId, key: "balance_4_" + uint8ArrayToHex(sender)});
+    console.log("!!!!!getContextValue", decodeFromUtf8Array(result))
+    currentState = decodeFromUtf8Array(result);
+    assert.strictEqual(currentState, "20");
 }
 
 runTests();
