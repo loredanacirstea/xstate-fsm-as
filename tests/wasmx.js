@@ -48,6 +48,13 @@ export function wasmx(storageMap, env, logType = LOG.error) {
         return value;
     }
 
+    function grpcRequest(keybuf) {
+        if (logType > 1) {
+            console.log('-host-grpcRequest', [...new Uint8Array(keybuf)]);
+        }
+        return new Uint8Array(0);
+    }
+
     function getCallData() {
         if (logType > 1) {
             console.log('-host-getCallData', env.currentCall.callData);
@@ -89,6 +96,7 @@ export function wasmx(storageMap, env, logType = LOG.error) {
         getCaller,
         getBalance,
         log,
+        grpcRequest,
     }
 }
 

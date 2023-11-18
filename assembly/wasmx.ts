@@ -12,3 +12,5 @@ export declare function revert(message: ArrayBuffer): void
 
 export declare function getAccount(address: ArrayBuffer): ArrayBuffer
 export declare function externalCall(data: ArrayBuffer): ArrayBuffer
+
+export declare function grpcRequest(data: ArrayBuffer): ArrayBuffer

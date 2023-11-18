@@ -375,6 +375,48 @@ const erc20Machine1Orig = {
     }
 }
 
+const consensusSMConfigOrig = {
+  id: "AB-Req-Res",
+  initial: "uninitialized",
+  context: {},
+  states: {
+    uninitialized: {
+      on: {
+        initialize: {
+          target: "active",
+        },
+      },
+    },
+    active: {
+      on: {
+        sendRequest: {
+          target: "ISentTheRequest",
+          actions: {
+            type: "sendRequest",
+          },
+        },
+        receiveRequest: {
+          target: "IReceivedTheRequest",
+        },
+      },
+    },
+    ISentTheRequest: {
+      on: {
+        reset: {
+          target: "uninitialized",
+        },
+      },
+    },
+    IReceivedTheRequest: {
+      on: {
+        reset: {
+          target: "uninitialized",
+        },
+      },
+    },
+  }
+}
+
 const implementations = {actions: {}};
 
 async function runTests() {
@@ -604,6 +646,19 @@ async function runTests() {
     console.log("!!!!!getContextValue", decodeFromUtf8Array(result))
     currentState = decodeFromUtf8Array(result);
     assert.strictEqual(currentState, "20");
+
+    // machine 6 consensusSMConfigOrig
+    machineConfig = parseMachine(consensusSMConfigOrig);
+    console.log("==consensusSMConfigOrig==");
+    console.log(JSON.stringify(machineConfig));
+    // Create the machine
+    result = await runFnOwner("create", machineConfig);
+    machineId = JSON.parse(decodeFromUtf8Array(result)).id;
+    assert.strictEqual(machineId, 5);
+
+    await runFnOwner("run", {id: machineId, event: {type: "sendRequest", params: [{key: "address", value: "localhost"}, {key: "data", value: "hello"}]}});
+
+    // {run: {id: 0, event: {type: "sendRequest", params: [{key: "address", value: "%s"}, {key: "data", value: "hello"}]}
 }
 
 runTests();
@@ -623,3 +678,17 @@ export function hexToUint8Array(hexString) {
     const encodedString = hexString.match(/.{1,2}/g).map(byte => parseInt(byte, 16));
     return new Uint8Array(encodedString);
 }
+
+// function name() public view returns (string)
+// function symbol() public view returns (string)
+// function decimals() public view returns (uint8)
+// function totalSupply() public view returns (uint256)
+// function balanceOf(address _owner) public view returns (uint256 balance)
+// function transfer(address _to, uint256 _value) public returns (bool success)
+// function transferFrom(address _from, address _to, uint256 _value) public returns (bool success)
+// function approve(address _spender, uint256 _value) public returns (bool success)
+// function allowance(address _owner, address _spender) public view returns (uint256 remaining)
+
+
+// event Transfer(address indexed _from, address indexed _to, uint256 _value)
+// event Approval(address indexed _owner, address indexed _spender, uint256 _value)

@@ -151,3 +151,10 @@ export function log_fsm(
     const logstr = JSON.stringify<WasmxLog>(logs);
     wasmx.log(String.UTF8.encode(logstr));
 }
+
+export function grpcRequest(ip: string, data: string): string {
+    const req = String.UTF8.encode(`{"address":"${ip}","data":"${data}"}`);
+    const result = wasmx.grpcRequest(req);
+    console.log(String.UTF8.decode(result));
+    return String.UTF8.decode(result);
+}

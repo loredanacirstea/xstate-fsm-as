@@ -1,3 +1,4 @@
+import { JSON } from "json-as/assembly";
 import {
   create as _create,
   getCurrentState as _getCurrentState,
@@ -16,11 +17,16 @@ import {
   EventObject,
   Typestate,
   EventClass,
+  ConfigExternal,
 } from './types';
+import * as data from './data';
 
 export function wasmx_env_2(): void {}
 
-export function instantiate_(): void {}
+export function instantiate_(): void {
+  const calld = JSON.parse<ConfigExternal<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>>(data.networkState);
+  createInternal<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>(calld, null);
+}
 
 export function main(): u8[] {
     let result: ArrayBuffer;

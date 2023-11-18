@@ -298,6 +298,11 @@ function executeStateActions<
         state.context = newctx;
         continue;
     }
+    if (actionType === "sendRequest") {
+      const newctx = sendRequest<TContext, TEvent, TState>(id, state.context, action.params, event);
+      state.context = newctx;
+      continue;
+    }
     if (actionType === "logTransfer") {
         console.log("--execute logTransfer-")
         const newctx = logTransfer<TContext, TEvent, TState>(id, state.context, action.params, event);
@@ -675,6 +680,40 @@ function log<
     const value = ctx.get(key);
     console.log(`${key}: ${value} - ${message}`);
   }
+  return ctx;
+}
+
+function sendRequest<
+  TContext extends Map<string,string>,
+  TEvent extends EventObject,
+  TState extends Typestate<TContext>,
+>(
+  id: i32,
+  ctx: TContext,
+  params: ActionParam[],
+  event: TEvent,
+): TContext {
+  let address: string = "";
+  let data: string = "";
+  for (let i = 0; i < event.params.length; i++) {
+      if (event.params[i].key === "address") {
+          address = event.params[i].value;
+          continue;
+      }
+      if (event.params[i].key === "data") {
+          data = event.params[i].value;
+          continue;
+      }
+  }
+  if (address === "") {
+      wasmx.revert(String.UTF8.encode("mint event empty address"));
+      throw new Error("mint event empty address");
+  }
+  if (data === "") {
+      wasmx.revert(String.UTF8.encode("mint event empty address"));
+      throw new Error("mint event empty address");
+  }
+  wasmxwrap.grpcRequest(address, data);
   return ctx;
 }
 

@@ -54,6 +54,11 @@ async function instantiate(module, imports = {}) {
         address = __liftBuffer(address >>> 0);
         return __lowerBuffer(__module0.getBalance(address)) || __notnull();
       },
+      grpcRequest(data) {
+        // assembly/wasmx/grpcRequest(~lib/arraybuffer/ArrayBuffer) => ~lib/arraybuffer/ArrayBuffer
+        data = __liftBuffer(data >>> 0);
+        return __lowerBuffer(__module0.grpcRequest(data)) || __notnull();
+      },
       log(value) {
         // assembly/wasmx/log(~lib/arraybuffer/ArrayBuffer) => void
         value = __liftBuffer(value >>> 0);

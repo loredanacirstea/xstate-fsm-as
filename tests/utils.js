@@ -1,4 +1,5 @@
 export function parseMachine(origConfig) {
+    origConfig.context = origConfig.context || {};
     const newConfig = {
         ...origConfig,
         context: Object.keys(origConfig.context).map(key => {
