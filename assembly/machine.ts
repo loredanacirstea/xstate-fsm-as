@@ -1,6 +1,7 @@
 import { JSON } from "json-as/assembly";
 import * as wasmxwrap from './wasmx_wrap';
 import * as wasmx from './wasmx';
+import { Time } from './timer';
 
 import {
   // ContextFrom,
@@ -123,7 +124,7 @@ function handleActions<
   context: TContext,
   eventObject: TEvent
 ): HandledActions<TContext, TEvent> {
-  console.log("--handleActions--ctx-" + context.keys().join(","))
+  // console.log("--handleActions--ctx-" + context.keys().join(","))
   let nextContext = context;
   let assigned = false;
   const nonAssignActions: StateMachine.ActionObject<TContext, TEvent>[] = [];
@@ -134,7 +135,7 @@ function handleActions<
     if (action.type === ASSIGN_ACTION) {
       assigned = true;
       let tmpContext: TContext = mergeMap<string>(nextContext, new Map());
-      console.log("--handleActions--tmpContext-" + tmpContext.keys().join(","))
+      // console.log("--handleActions--tmpContext-" + tmpContext.keys().join(","))
 
       // const aassign = action.assignment;
 
@@ -164,7 +165,7 @@ function handleActions<
     // return true;
     nonAssignActions.push(action);
   }
-  console.log("--handleActions--nextContext-" + nextContext.keys().join(","))
+  // console.log("--handleActions--nextContext-" + nextContext.keys().join(","))
 
   // return {actions: nonAssignActions, ctx: nextContext, assigned};
   return new HandledActions(nonAssignActions, nextContext, assigned);
@@ -266,15 +267,65 @@ function executeStateActions<
 ): void {
   for (let i = 0; i < state.actions.length; i++) {
     const action = state.actions[i];
-    const actionType = action.type;
-    console.log("---action-raise?--" + actionType);
-    // const exec = action.exec;
-    // if (exec) {
-    //   exec(state.context, event);
+    executeStateAction<TContext, TEvent, TState>(service, id, state, event, action);
+  }
+
+  // timed actions from the new target state
+  const newstateconfig = findStateInfo<TContext,TEvent,TState>(service.machine.config.states, state.value);
+  if (!newstateconfig) {
+    wasmx.revert(String.UTF8.encode("could not find state config for " + state.value));
+    throw new Error("could not find state config for " + state.value);
+  }
+  const afterTimers = newstateconfig.after;
+  console.log("===executeStateActions afterTimers===")
+  if (afterTimers == null) {
+    return;
+  }
+  const delayKeys = afterTimers.keys();
+  console.log("===executeStateActions afterTimers=yes==" + delayKeys.join(","))
+  const delays = delayKeys
+    .map((v: string) => u64(parseInt(v, 10)))
+    .sort((a, b) => i32(a - b));
+
+  for (let i = 0; i < delays.length; i++) {
+    const delay = delays[i]; // delay is in milliseconds
+    const nsdelay = delay * 1000000; // nanoseconds
+    const transition = afterTimers.get(delay.toString());
+    if (!transition) {
+      wasmx.revert(String.UTF8.encode("delayed transition not found: " + delay.toString()));
+      throw new Error("delayed transition not found: " + delay.toString());
+    }
+    Time.sleep(nsdelay);
+    // just a copied transition
+    service.state = service.machine.applyTransition(state, transition);
+    executeStateActions<TContext, TEvent, TState>(service, service.id, service.state, event);
+    // TODO listeners?
+
+    // for (let j = 0; j < transition.actions.length; j++) {
+    //   const action = transition.actions[j];
+    //   // if not raise, execute
+    //   // executeStateAction<TContext, TEvent, TState>(service, id, state, event, action);
     // }
+  }
+}
+
+function executeStateAction<
+  TContext extends Map<string,string>,
+  TEvent extends EventObject,
+  TState extends Typestate<TContext>,
+>(
+    service: Service<TContext, TEvent, TState>,
+    id: i32,
+    state: StateMachine.State<TContext, TEvent, TState>,
+    event: TEvent,
+    action:  StateMachine.ActionObject<TContext, TEvent>,
+): void {
+    const actionType = action.type;
+    console.log("-executeStateAction--action--" + actionType);
+
     if (actionType === RaiseActionType) {
         const ev = action.event;
-        console.log("---RAISE!!-" + ev!.type);
+        console.log("--executeStateAction-RAISE-" + ev!.type);
         if (ev === null) {
             wasmx.revert(String.UTF8.encode("raise action is missing event"));
             throw new Error("raise action is missing event");
@@ -286,43 +337,41 @@ function executeStateActions<
     if (actionType === "mint") {
         const newctx = mint<TContext, TEvent, TState>(id, state.context, action.params, event);
         state.context = newctx;
-        continue;
+        return;
     }
     if (actionType === "move") {
         const newctx = move<TContext, TEvent, TState>(id, state.context, action.params, event);
         state.context = newctx;
-        continue;
+        return;
     }
     if (actionType === "approve") {
         const newctx = approve<TContext, TEvent, TState>(id, state.context, action.params, event);
         state.context = newctx;
-        continue;
+        return;
     }
     if (actionType === "sendRequest") {
       const newctx = sendRequest<TContext, TEvent, TState>(id, state.context, action.params, event);
       state.context = newctx;
-      continue;
+      return;
     }
     if (actionType === "logTransfer") {
-        console.log("--execute logTransfer-")
         const newctx = logTransfer<TContext, TEvent, TState>(id, state.context, action.params, event);
         state.context = newctx;
-        continue;
+        return;
     }
     if (actionType === "increment") {
       const newctx = increment<TContext, TEvent, TState>(state.context, action.params);
       state.context = newctx;
-      continue;
+      return;
     }
     if (actionType === "log") {
         const newctx = log<TContext, TEvent, TState>(state.context, action.params);
         state.context = newctx;
-        continue
+        return
     }
     // state.context
     // action.type
     // action.params
-  }
 }
 
 function isAdmin<
@@ -413,15 +462,12 @@ function getBalance<
     ctx: TContext,
     addr: string,
 ): i64 {
-    console.log("--getBalance--" + id.toString() + "--" + addr);
     const key = getBalanceKey(id, addr);
     if (ctx.has(key)) {
         const balancestr = ctx.get(key);
         const balance = parseInt(balancestr);
-        console.log("--getBalance--" + balancestr);
         return i64(balance);
     }
-    console.log("--getBalance--0");
     return i64(0);
 }
 
@@ -434,7 +480,6 @@ function setBalance<
     amount: i64,
 ): TContext {
     const key = getBalanceKey(id, addr);
-    console.log("--setBalance--" + key + "-" + amount.toString());
     ctx.set(key, amount.toString());
     return ctx;
 }
@@ -448,7 +493,6 @@ function getAllowance<
     spender: string,
 ): i64 {
     const key = getAllowanceKey(id, owner, spender);
-    console.log("--getAllowance--" + key);
     if (ctx.has(key)) {
         const allowancestr = ctx.get(key);
         const allowance = parseInt(allowancestr);
@@ -467,7 +511,6 @@ function setAllowance<
     amount: i64,
 ): TContext {
     const key = getAllowanceKey(id, owner, spender);
-    console.log("--setAllowance--" + key + "-" +  amount.toString());
     ctx.set(key, amount.toString());
     return ctx;
 }
@@ -1014,16 +1057,16 @@ export class Machine<
     const value = state.value;
     const context = state.context;
     const eventObject = event;
-    console.log("----transition-config.states-" + this.config.states.keys().join(","));
+    // console.log("----transition-config.states-" + this.config.states.keys().join(","));
     // const stateConfig = this.config.states.get(value);
     const stateConfig = findStateInfo<TContext,TEvent,TState>(this.config.states, value);
-    console.log("--findStateInfo--END=stateConfig-")
+    // console.log("--findStateInfo--END=stateConfig-")
     if (!stateConfig) {
         wasmx.revert(String.UTF8.encode("state not found: " + value));
         throw new Error("state not found: " + value);
     }
-    console.log("----transition-stateConfig-" + stateConfig.on.keys().join(","));
-    console.log("--eventObject.type--" + eventObject.type);
+    // console.log("----transition-stateConfig-" + stateConfig.on.keys().join(","));
+    console.log("-transition-event--" + eventObject.type);
 
     if (stateConfig.on) {
       if (!stateConfig.on.has(eventObject.type)) {
@@ -1062,7 +1105,7 @@ export class Machine<
         // const nextStateConfig = this.config.states.get(nextStateValue);
 
         const nextStateConfig = findStateInfo<TContext,TEvent,TState>(this.config.states, nextStateValue);
-        console.log("--findStateInfo--END=nextStateConfig-")
+        // console.log("--findStateInfo--END=nextStateConfig-")
         if (!nextStateConfig) {
             wasmx.revert(String.UTF8.encode("state not found: " + nextStateValue));
             throw new Error("state not found: " + nextStateValue);
@@ -1075,7 +1118,7 @@ export class Machine<
             throw new Error("cannot execute transition; guard: " + guard);
         }
 
-        console.log("----transition-cond--" + cond.toString())
+        // console.log("----transition-cond--" + cond.toString())
         if (cond(context, eventObject)) {
           // const allActions: StateMachine.Action<TContext, TEvent>[] = (
           //   isTargetless
@@ -1096,32 +1139,39 @@ export class Machine<
                     // We are looking through parameters of the current event
                     // and adding them in the raised event if the key values match
                     // TODO - another way?
-                    console.log("--raise?0-" + act.type);
+                    // console.log("--raise?0-" + act.type);
                     if (act.event === null) {
                         wasmx.revert(String.UTF8.encode("raise action is missing event"));
                         throw new Error("raise action is missing event");
                     }
-                    console.log("--raise?1-" + act.event!.type);
-                    console.log("--raise?11-" + act.event!.params.length.toString());
+                    // console.log("--raise?1-" + act.event!.type);
+                    // console.log("--raise?11-" + act.event!.params.length.toString());
                     for (let k = 0; k < act.event!.params.length; k++) {
                         const key = act.event!.params[k].key;
                         const value = act.event!.params[k].value;
-                        console.log("--raise?2-param-" + key + "--" + value);
+                        // console.log("--raise?2-param-" + key + "--" + value);
+                        let found = false;
                         if (value.includes("()")) {
                             // TODO have a map with all provided functions and guards
                             if (value === "getCaller()") {
                                 act.event!.params[k].value = wasmxwrap.getCaller();
+                                found = true;
                             }
                         } else {
                             for (let x = 0; x < event.params.length; x++) {
                                 if (event.params[x].key === value) {
                                     act.event!.params[k].value = event.params[x].value;
+                                    found = true;
                                 }
+                            }
+                            if (!found && context.has(value)) {
+                              // look in context
+                              act.event!.params[k].value = context.get(value);
                             }
                         }
                     }
                 }
-                console.log("--raise? add action!-" + act.type);
+                console.log("--raise add action!-" + act.type);
                 allActions.push(act);
             }
             // for (let i = 0; i < stateConfig.exit.length; i++) {
@@ -1155,26 +1205,194 @@ export class Machine<
           const assigned = res.assigned;
 
           let resolvedTarget = target || value;
-          console.log("----resolvedTarget-" + resolvedTarget)
+          // console.log("--transition--resolvedTarget-" + resolvedTarget)
 
           // child states! we choose the first one
           const stateConfig = findStateInfo<TContext, TEvent, TState>(this.config.states, resolvedTarget);
-          console.log("--findStateInfo--END=");
+          // console.log("--findStateInfo--END=");
           if (!stateConfig) {
             wasmx.revert(String.UTF8.encode("state not found: " + resolvedTarget));
             throw new Error("state not found: " + resolvedTarget);
           }
-          console.log("--findStateInfo--END1=");
+          // console.log("--findStateInfo--END1=");
           if (stateConfig.states !== null && stateConfig.states.keys().length > 0) {
             resolvedTarget = stateConfig.states.keys()[0];
           }
-          console.log("--findStateInfo--END2=");
+          // console.log("--findStateInfo--END2=");
 
-          console.log("--resolvedTarget=" + resolvedTarget);
+          console.log("-transition-resolvedTarget" + resolvedTarget);
 
           return new State<TContext, TEvent, TState>(resolvedTarget, nextContext, nonAssignActions, target !== value || nonAssignActions.length > 0 || assigned);
           // matches: createMatcher(resolvedTarget)
         }
+      }
+    }
+
+    // No transitions match
+    return createUnchangedState<TContext, TEvent, TState>(value, context);
+  }
+
+  applyTransition(
+    state: StateMachine.State<TContext, TEvent, TState>,
+    transition: StateMachine.Transition<TContext, TEvent, string>
+  ): StateMachine.State<TContext, TEvent, TState> {
+    const value = state.value;
+    const context = state.context;
+    const stateConfig = findStateInfo<TContext,TEvent,TState>(this.config.states, value);
+    if (!stateConfig) {
+        wasmx.revert(String.UTF8.encode("state not found: " + value));
+        throw new Error("state not found: " + value);
+    }
+
+    const transitions: Array<
+      StateMachine.Transition<TContext, TEvent, string>
+    > = [transition];
+
+    if (stateConfig.on.has(WILDCARD)) {
+      const _trans = stateConfig.on.get(WILDCARD);
+      transitions.push(_trans);
+      // for (let i = 0; i < _trans.length; i++) {
+      //   transitions.push(_trans[i]);
+      // }
+    }
+
+    for (let i = 0; i < transitions.length; i++) {
+      const transition = transitions[i];
+      if (transition === null) {
+        return createUnchangedState<TContext, TEvent, TState>(value, context);
+      }
+      const target = transition.target;
+      const actions = transition.actions || [];
+      const guard = transition.guard;
+      const cond = transition.cond || (() => true);
+
+      const isTargetless = target === null;
+
+      const nextStateValue = target || value;
+      console.log("----transition-nextStateValue--" + nextStateValue)
+      // const nextStateConfig = this.config.states.get(nextStateValue);
+
+      const nextStateConfig = findStateInfo<TContext,TEvent,TState>(this.config.states, nextStateValue);
+      // console.log("--findStateInfo--END=nextStateConfig-")
+      if (!nextStateConfig) {
+          wasmx.revert(String.UTF8.encode("state not found: " + nextStateValue));
+          throw new Error("state not found: " + nextStateValue);
+      }
+
+      console.log("----transition-nextStateConfig--" + nextStateConfig.on.keys().join(","))
+
+      // if (guard && !executeGuard<TContext, TEvent, TState>(this.id, context, guard, event)) {
+      //     wasmx.revert(String.UTF8.encode("cannot execute transition; guard: " + guard));
+      //     throw new Error("cannot execute transition; guard: " + guard);
+      // }
+
+      // console.log("----transition-cond--" + cond.toString())
+      if (true) {
+        // const allActions: StateMachine.Action<TContext, TEvent>[] = (
+        //   isTargetless
+        //     ? actions
+        //     : stateConfig.exit
+        //         .concat(actions)
+        //         .concat(nextStateConfig.entry)
+        //         // .filter((a) => a)
+        // )
+        let allActions: StateMachine.ActionObject<TContext, TEvent>[] = [];
+        if (!isTargetless) {
+          // for (let i = 0; i < stateConfig.exit.length; i++) {
+          //   allActions.push(stateConfig.exit[i]);
+          // }
+          for (let i = 0; i < actions.length; i++) {
+              const act = actions[i];
+              if (act.type === RaiseActionType) {
+                  // We are looking through parameters of the current event
+                  // and adding them in the raised event if the key values match
+                  // TODO - another way?
+                  // console.log("--raise?0-" + act.type);
+                  if (act.event === null) {
+                      wasmx.revert(String.UTF8.encode("raise action is missing event"));
+                      throw new Error("raise action is missing event");
+                  }
+                  // console.log("--raise?1-" + act.event!.type);
+                  // console.log("--raise?11-" + act.event!.params.length.toString());
+                  for (let k = 0; k < act.event!.params.length; k++) {
+                      const key = act.event!.params[k].key;
+                      const value = act.event!.params[k].value;
+                      // console.log("--raise?2-param-" + key + "--" + value);
+                      let found = false;
+                      if (value.includes("()")) {
+                          // TODO have a map with all provided functions and guards
+                          if (value === "getCaller()") {
+                              act.event!.params[k].value = wasmxwrap.getCaller();
+                              found = true;
+                          }
+                      } else {
+                          // for (let x = 0; x < event.params.length; x++) {
+                          //     if (event.params[x].key === value) {
+                          //         act.event!.params[k].value = event.params[x].value;
+                          //         found = true;
+                          //     }
+                          // }
+                          if (!found && context.has(value)) {
+                            // look in context
+                            act.event!.params[k].value = context.get(value);
+                          }
+                      }
+                  }
+              }
+              console.log("--raise add action!-" + act.type);
+              allActions.push(act);
+          }
+          // for (let i = 0; i < stateConfig.exit.length; i++) {
+          //   allActions.push(nextStateConfig.entry[i]);
+          // }
+          // allActions = allActions.concat(stateConfig.exit);
+          // allActions = allActions.concat(nextStateConfig.entry);
+        }
+
+        // const allActionObjects: StateMachine.ActionObject<TContext, TEvent>[] = [];
+
+        // for (let i = 0; i < allActions.length; i++) {
+        //   const action = allActions[i];
+        //   const actionFn = action.actionFn;
+        //   if (actionFn) {
+        //     const obj = toActionObject<TContext, TEvent>(actionFn, this.options.actions);
+        //     allActionObjects.push(obj);
+        //   }
+        //   const obj = toActionObjectFromString<TContext, TEvent>(action.value, this.options.actions);
+        //   allActionObjects.push(obj);
+        // }
+
+        const eventObject: EventObject = new EventClass("", []);
+        const res = handleActions(
+          // allActionObjects,
+          allActions,
+          context,
+          eventObject,
+        );
+        const nonAssignActions = res.actions;
+        const nextContext = res.ctx;
+        const assigned = res.assigned;
+
+        let resolvedTarget = target || value;
+        // console.log("--transition--resolvedTarget-" + resolvedTarget)
+
+        // child states! we choose the first one
+        const stateConfig = findStateInfo<TContext, TEvent, TState>(this.config.states, resolvedTarget);
+        // console.log("--findStateInfo--END=");
+        if (!stateConfig) {
+          wasmx.revert(String.UTF8.encode("state not found: " + resolvedTarget));
+          throw new Error("state not found: " + resolvedTarget);
+        }
+        // console.log("--findStateInfo--END1=");
+        if (stateConfig.states !== null && stateConfig.states.keys().length > 0) {
+          resolvedTarget = stateConfig.states.keys()[0];
+        }
+        // console.log("--findStateInfo--END2=");
+
+        console.log("-transition-resolvedTarget" + resolvedTarget);
+
+        return new State<TContext, TEvent, TState>(resolvedTarget, nextContext, nonAssignActions, target !== value || nonAssignActions.length > 0 || assigned);
+        // matches: createMatcher(resolvedTarget)
       }
     }
 
@@ -1300,24 +1518,6 @@ export function getContextValueInternal(id: i32, key: string): ArrayBuffer {
         return String.UTF8.encode(ctx.get(key));
     }
     return new ArrayBuffer(0);
-}
-
-// TODO remove this
-export function transition(id: i32, stateValueBuf: ArrayBuffer, eventBuf: ArrayBuffer): ArrayBuffer {
-  const service = loadServiceFromId<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>(id);
-  if (!service) {
-    wasmx.revert(String.UTF8.encode("no service"));
-    throw new Error("no service");
-  }
-
-  const stateValue = String.UTF8.decode(stateValueBuf);
-  const event = JSON.parse<EventClassExternal>(String.UTF8.decode(eventBuf));
-  const _event = new EventClass(event.type, event.params);
-  console.log("----transition--" + stateValue + " - " + _event.type);
-  const state = new State<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>(stateValue, service.machine.config.context, [], false);
-  const nextState = service.machine.transition(state, _event);
-  console.log("----nextState-" + nextState.value)
-  return String.UTF8.encode(nextState.value);
 }
 
 export function run(

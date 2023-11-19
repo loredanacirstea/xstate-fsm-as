@@ -3,7 +3,6 @@ import {
   create as _create,
   getCurrentState as _getCurrentState,
   getContextValue as _getContextValue,
-  transition as _transition,
   run as _run,
   runInternal,
   createInternal,
@@ -20,15 +19,24 @@ import {
   ConfigExternal,
 } from './types';
 import * as data from './data';
+import { Console } from "as-wasi/assembly";
 
-export function wasmx_env_2(): void {}
+Console.log("Hello World!");
 
-export function instantiate_(): void {
-  const calld = JSON.parse<ConfigExternal<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>>(data.networkState);
+// WASI
+main()
+// TODO uncomment
+// export function wasmx_env_2(): void {}
+
+// todo for reactor model
+export function instantiate(): void {
+  const calld = JSON.parse<ConfigExternal<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>>(data.networkState2);
   createInternal<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>(calld, null);
 }
 
 export function main(): u8[] {
+  console.log("--main--")
+  Console.log("--Console--main")
     let result: ArrayBuffer;
     const calldata = wasmxwrap.getCallDataWrap<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>();
     if (calldata.run !== null) {

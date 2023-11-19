@@ -52,10 +52,16 @@ TContext extends Map<string,string>,
 TEvent extends EventObject,
 > = Map<string,StateMachine.Transition<TContext, TEvent, string>>
 
+export type StateTimers<
+TContext extends Map<string,string>,
+TEvent extends EventObject,
+> = Map<string,StateMachine.Transition<TContext, TEvent, string>>
+
 export interface StateInfo<
   TContext extends Map<string,string>,
   TEvent extends EventObject,
 > {
+  after: StateTimers<TContext, TEvent> | null;
   on: StateInfoEvents<TContext, TEvent>;
   // exit: Array<StateMachine.Action<TContext, TEvent>>;
   // entry: Array<StateMachine.Action<TContext, TEvent>>;
@@ -137,6 +143,7 @@ export namespace StateMachine {
     actions: Array<ActionObject<TContext, TEvent>>;
     guard: string;
     cond: ((context: TContext, event: TEvent) => boolean) | null;
+    // TODO meta {}
   }
 
   export interface State<
@@ -180,6 +187,10 @@ export namespace StateMachine {
       state: State<TContext, TEvent, TState>,
       event: TEvent
     ): State<TContext, TEvent, TState>;
+    applyTransition(
+      state: StateMachine.State<TContext, TEvent, TState>,
+      transition: StateMachine.Transition<TContext, TEvent, string>
+    ): StateMachine.State<TContext, TEvent, TState>;
   }
 
   export type StateListener<T extends AnyState> = (state: T) => void;
@@ -512,6 +523,7 @@ export class StateInfoClass<
   TContext extends Map<string,string>,
   TEvent extends EventObject,
 > implements StateInfo<TContext, TEvent> {
+  after: StateTimers<TContext, TEvent> | null;
   on: StateInfoEvents<TContext, TEvent>;
   exit: Array<ActionClass<TContext, TEvent>>;
   entry: Array<ActionClass<TContext, TEvent>>;
@@ -519,6 +531,7 @@ export class StateInfoClass<
   states: States<TContext, TEvent>;
 
   constructor(
+    after: StateTimers<TContext, TEvent> | null,
     on: StateInfoEvents<TContext, TEvent>,
     exit: Array<ActionClass<TContext, TEvent>>,
     entry: Array<ActionClass<TContext, TEvent>>,
@@ -527,6 +540,7 @@ export class StateInfoClass<
     initial: string,
     childstates: States<TContext, TEvent>,
   ) {
+    this.after = after
     this.on = on;
     this.exit = exit;
     this.entry = entry;
@@ -542,6 +556,7 @@ export class StateInfoClassExternal<
   TEvent extends EventObject,
 > {
   name: string;
+  after: Array<TransitionExternal<TContext, TEvent, string>>;
   on: Array<TransitionExternal<TContext, TEvent, string>>;
   exit: Array<ActionClass<TContext, TEvent>>;
   entry: Array<ActionClass<TContext, TEvent>>;
@@ -550,6 +565,7 @@ export class StateInfoClassExternal<
 
   constructor(
     name: string,
+    after: Array<TransitionExternal<TContext, TEvent, string>>,
     on: Array<TransitionExternal<TContext, TEvent, string>>,
     exit: Array<ActionClass<TContext, TEvent>>,
     entry: Array<ActionClass<TContext, TEvent>>,
@@ -557,6 +573,7 @@ export class StateInfoClassExternal<
     childstates: Array<StateInfoClassExternal<TContext, TEvent>>,
   ) {
     this.name = name;
+    this.after = after;
     this.on = on;
     this.exit = exit;
     this.entry = entry;
@@ -602,8 +619,38 @@ export class StateInfoClassExternal<
             null,
         ));
     }
+    let afterTimers: Array<TransitionExternal<ContextGeneral<string>,EventObject>> = [];
+    const afterT = stateInfo.after;
+    if (afterT != null) {
+      const keys = afterT.keys();
+      for (let i = 0; i < keys.length; i++) {
+        const delay = keys[i];
+        const delayedTransition = afterT.get(delay);
+
+        const dActions: Array<ActionObject<ContextGeneral<string>,EventObject>> = [];
+        for (let k = 0; k < delayedTransition.actions.length; k++) {
+            const actionobj = delayedTransition.actions[k];
+            const _ev = actionobj.event;
+            let ev: EventClassExternal | null = null;
+            if (_ev !== null) {
+              ev = new EventClassExternal(_ev.type, _ev.params);
+            }
+            dActions.push(new ActionObject<ContextGeneral<string>,EventObject>(actionobj.type, actionobj.params, ev));
+        }
+
+        const afterTimer = new TransitionExternal<ContextGeneral<string>,EventObject>(
+          delay,
+          delayedTransition.target,
+          dActions,
+          "",
+          null,
+        );
+        afterTimers.push(afterTimer);
+      }
+    }
     return new StateInfoClassExternal(
       stateName,
+      afterTimers,
       onevents,
       [], // TODO stateInfo.exit
       [], // TODO stateInfo.entry
@@ -616,18 +663,15 @@ export class StateInfoClassExternal<
     TContext extends Map<string,string>,
     TEvent extends EventObject,
   >(ostates: Array<StateInfoClassExternal<TContext,TEvent>>): States<TContext,TEvent> {
-    console.log("--toInternalFromArray--");
     const states = new Map<string,StateInfo<TContext,TEvent>>();
     for (let i = 0; i < ostates.length; i++) {
       const state = ostates[i].toInternal();
       states.set(ostates[i].name, state);
     }
-    console.log("--toInternalFromArray-END-" + states.keys().length.toString());
     return states;
   }
 
   toInternal(): StateInfo<TContext,TEvent> {
-    console.log("--toInternal--" + this.name);
     const stateon: StateInfoEvents<TContext, TEvent> = new Map<string,StateMachine.Transition<TContext, TEvent, string>>();
     for (let j = 0; j < this.on.length; j++) {
         const onev = this.on[j];
@@ -643,9 +687,24 @@ export class StateInfoClassExternal<
             null,
         ))
     }
+    let afterTimers: StateTimers<TContext, TEvent> | null = null;
+    if (this.after.length > 0) {
+      afterTimers = new Map();
+      for (let i = 0; i < this.after.length; i++) {
+        const aft = this.after[i];
+        const actions: Array<StateMachine.ActionObject<TContext, TEvent>> = [];
+        for (let k = 0; k < aft.actions.length; k++) {
+            const action = aft.actions[k];
+            actions.push(new ActionObject<TContext, TEvent>(action.type, action.params, action.event));
+        }
+        const transition = new Transition<TContext, TEvent, string>(aft.target, actions, "", null);
+        afterTimers.set(aft.name, transition);
+      }
+    }
 
     const childstates = StateInfoClassExternal.toInternalFromArray(this.states);
     return new StateInfoClass<TContext, TEvent>(
+      afterTimers,
       stateon,
       this.exit,
       this.entry,

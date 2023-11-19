@@ -45,8 +45,41 @@ function parseMachineStates(configStates = {}) {
             }
         })
 
+        let _stateafter = state.after || {};
+        const stateafter = Object.keys(_stateafter).map(delayKey => {
+            const ev = _stateafter[delayKey];
+            const actions = [];
+            let oactions = ev.actions;
+            if (!oactions) oactions = [];
+            if (oactions instanceof Object && !(oactions instanceof Array)) {
+                oactions = [oactions];
+            }
+            for (let i = 0; i < oactions.length; i++) {
+                let ev = oactions[i].event;
+                if (ev) {
+                    ev = {type: ev.type || "", params: ev.params || []}
+                }
+                const action = {
+                    ...oactions[i],
+                    params: Object.keys(oactions[i].params || {}).map(stateName => {
+                        return {key: stateName, value: oactions[i].params[stateName]};
+                    }),
+                    event: ev,
+                }
+                actions.push(action);
+            }
+
+            return {
+                name: delayKey || "",
+                target: ev.target || "",
+                guard: ev.guard || "",
+                actions,
+            }
+        })
+
         return {
             name: key,
+            after: stateafter,
             on: stateon,
             exit: [], // TODO
             entry: [], // TODO

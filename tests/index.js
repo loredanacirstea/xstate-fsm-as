@@ -3,7 +3,17 @@ import assert from "assert";
 // import { describe, it } from 'node:test';
 // import { create, getCurrentState, getContextValue, transition, run } from "../build/debug.js";
 import { load, LOG } from './wasmx.js';
-import { parseMachine, uint8ArrayToHex, raise } from './utils.js';
+import { parseMachine, uint8ArrayToHex } from './utils.js';
+import {
+  machineConfig2,
+  machineConfig2Orig,
+  machineConfig3Orig,
+  machineWithGuard,
+  erc20Machine1Orig,
+  consensusSMConfigOrig,
+  consensusSMTimerConfigOrig,
+  machineConfigSemaphore,
+} from './data.js';
 
 let currentState, value;
 
@@ -24,409 +34,20 @@ function runFnWrapped (storage = {}, env = {}) {
     }
 }
 
-let machineConfig = {
-    id: "Semaphore",
-    initial: "uninitialized",
-    context: [],
-    states: [
-        {
-            name: "uninitialized",
-            on: [{
-                name: "initialize",
-                target: "red",
-                guard: "",
-                    actions: [],
-            }],
-            exit: [],
-            entry: [],
-            initial: "",
-            states: [],
-        },
-        {
-            name: "red",
-            on: [
-                {
-                    name: "next",
-                    target: "blue",
-                    guard: "",
-                    actions: [],
-                },
-            ],
-            exit: [],
-            entry: [],
-            initial: "",
-            states: [],
-        },
-        {
-            name: "blue",
-            on: [
-                {
-                    name: "next",
-                    target: "red",
-                    guard: "",
-                    actions: [],
-                },
-            ],
-            exit: [],
-            entry: [],
-            initial: "",
-            states: [],
-        },
-    ],
-}
-
-
-const machineConfig2 = {
-    id: "Lock/unlock",
-    initial: "uninitialized",
-    context: [{key: "counter", value: "0"}],
-    states: [
-        {
-            name: "uninitialized",
-            on: [{
-                name: "initialize",
-                target: "unlocked",
-                guard: "",
-                    actions: [],
-            }],
-            exit: [],
-            entry: [],
-            initial: "",
-            states: [],
-        },
-        {
-            name: "unlock",
-            on: [
-                {
-                    name: "lock",
-                    target: "lock",
-                    guard: "",
-                    actions: [],
-                },
-                {
-                    name: "set",
-                    target: "",
-                    guard: "",
-                    actions: [
-                        {
-                            value: "counter",
-                            action: {type: "assign", args: ["counter"]},
-                        }
-                    ],
-                },
-                {
-                    name: "increment",
-                    target: "",
-                    guard: "",
-                    actions: [
-                        {
-                            value: "counter",
-                            action: {type: "increment"},
-                        }
-                    ],
-                },
-            ],
-            exit: [],
-            entry: [],
-            initial: "",
-            states: [],
-        },
-        {
-            name: "lock",
-            on: [
-                {
-                    name: "unlock",
-                    target: "unlock",
-                    guard: "",
-                    actions: [],
-                },
-            ],
-            exit: [],
-            entry: [],
-            initial: "",
-            states: [],
-        },
-    ],
-}
-
-const machineConfig2Orig = {
-    context: {
-      counter: "0",
-    },
-    id: "lock-count",
-    initial: "uninitialized",
-    states: {
-        uninitialized: {
-            on: {
-              initialize: {
-                target: "unlocked",
-              },
-            },
-        },
-      unlocked: {
-        on: {
-          lock: {
-            target: "locked",
-          },
-          increment: {
-            target: "unlocked",
-            actions: {
-              type: "increment",
-              params: {
-                counter: "1",
-              },
-            },
-          },
-        },
-      },
-      locked: {
-        on: {
-          unlock: {
-            target: "unlocked",
-          },
-        },
-      },
-    },
-}
-
-const machineConfig3Orig = {
-    context: {
-      counter: "0",
-    },
-    id: "Untitled",
-    initial: "uninitialized",
-    states: {
-        uninitialized: {
-            on: {
-              initialize: {
-                target: "unlocked",
-              },
-            },
-        },
-      unlocked: {
-        on: {
-          lock: {
-            target: "locked",
-          },
-          increment: {
-            target: "unlocked",
-            actions: [
-              {
-                type: "increment",
-                params: {
-                  counter: "2",
-                },
-              },
-              {
-                type: "log",
-                params: {
-                  counter: "",
-                },
-                expr: "",
-              },
-            ],
-          },
-        },
-      },
-      locked: {
-        on: {
-          unlock: {
-            target: "unlocked",
-          },
-        },
-      },
-    },
-}
-
-const machineWithGuard = {
-    context: {
-      counter: "0",
-    },
-    id: "lock-count-guard",
-    initial: "uninitialized",
-    states: {
-        uninitialized: {
-            on: {
-              initialize: {
-                target: "unlocked",
-              },
-            },
-        },
-      unlocked: {
-        on: {
-          lock: {
-            target: "locked",
-          },
-          increment: {
-            target: "unlocked",
-            guard: "isAdmin",
-            actions: {
-              type: "increment",
-              params: {
-                counter: "1",
-              },
-            },
-          },
-        },
-      },
-      locked: {
-        on: {
-          unlock: {
-            target: "unlocked",
-          },
-        },
-      },
-    }
-}
-
-const erc20Machine1Orig = {
-    context: {
-      admin: "",
-      supply: "0",
-      tokenName: "",
-      tokenSymbol: "",
-    },
-    id: "ERC20",
-    initial: "uninitialized",
-    states: {
-      uninitialized: {
-        on: {
-          initialize: {
-            target: "unlocked",
-          },
-        },
-      },
-      unlocked: {
-        initial: "active",
-        states: {
-          active: {
-            on: {
-              transfer: {
-                target: "intransfer",
-                actions: raise({ from: "getCaller()", to: "to", amount: "amount", type: "move" }),
-              },
-              mint: {
-                target: "active",
-                guard: "isAdmin",
-                actions: {
-                  type: "mint",
-                },
-              },
-              approve: {
-                target: "active",
-                actions: {
-                  type: "approve",
-                },
-              },
-              transferFrom: {
-                target: "intransfer",
-                guard: "hasEnoughAllowance",
-                actions: raise({ from: "from", to: "to", amount: "amount", type: "move" }),
-              },
-            },
-          },
-          intransfer: {
-            initial: "unmoved",
-            states: {
-              unmoved: {
-                on: {
-                  move: {
-                    target: "moved",
-                    guard: "hasEnoughBalance",
-                    actions: [
-                      {
-                        type: "move",
-                      },
-                      {
-                        type: "logTransfer",
-                      },
-                      raise({ type: "finish" }),
-                    ],
-                  },
-                },
-              },
-              moved: {
-                on: {
-                  finish: {
-                    target: "#ERC20.unlocked.active",
-                  },
-                },
-              },
-            },
-          },
-        },
-        on: {
-          lock: {
-            target: "locked",
-            guard: "isAdmin",
-          },
-        },
-      },
-      locked: {
-        on: {
-          unlock: {
-            target: "unlocked",
-            guard: "isAdmin",
-          },
-        },
-      },
-    }
-}
-
-const consensusSMConfigOrig = {
-  id: "AB-Req-Res",
-  initial: "uninitialized",
-  context: {},
-  states: {
-    uninitialized: {
-      on: {
-        initialize: {
-          target: "active",
-        },
-      },
-    },
-    active: {
-      on: {
-        sendRequest: {
-          target: "ISentTheRequest",
-          actions: {
-            type: "sendRequest",
-          },
-        },
-        receiveRequest: {
-          target: "IReceivedTheRequest",
-        },
-      },
-    },
-    ISentTheRequest: {
-      on: {
-        reset: {
-          target: "uninitialized",
-        },
-      },
-    },
-    IReceivedTheRequest: {
-      on: {
-        reset: {
-          target: "uninitialized",
-        },
-      },
-    },
-  }
-}
-
 const implementations = {actions: {}};
 
 async function runTests() {
+    console.log("=consensusSMTimerConfigOrig=" , JSON.stringify(parseMachine(consensusSMTimerConfigOrig)));
+
+
+    let machineConfig, machineConfigStr, implementationsStr;
     const storage = {};
-    let machineConfigStr = JSON.stringify(machineConfig);
-    let implementationsStr = JSON.stringify(implementations);
     let machineId;
     let result;
     let runFn = runFnWrapped(storage);
 
     // Create the machine
-    result = await runFn("create", machineConfig)
+    result = await runFn("create", machineConfigSemaphore)
     console.log("!!!!!create", decodeFromUtf8Array(result))
     machineId = JSON.parse(decodeFromUtf8Array(result)).id;
     assert.strictEqual(machineId, 0);
@@ -452,7 +73,7 @@ async function runTests() {
     const implementations2 = {actions: {}};
 
     machineConfig = parseMachine(machineConfig2Orig);
-    console.log("==machineConfig==")
+    console.log("==machineConfig2Orig==")
     console.log(JSON.stringify(machineConfig))
     implementationsStr = JSON.stringify(implementations2);
 
@@ -657,6 +278,16 @@ async function runTests() {
     await runFnOwner("run", {id: machineId, event: {type: "sendRequest", params: [{key: "address", value: "localhost"}, {key: "data", value: "hello"}]}});
 
     // {run: {id: 0, event: {type: "sendRequest", params: [{key: "address", value: "%s"}, {key: "data", value: "hello"}]}
+
+    // machine 7
+    machineConfig = parseMachine(consensusSMTimerConfigOrig);
+    console.log("==consensusSMTimerConfigOrig==");
+    console.log(JSON.stringify(machineConfig));
+    // Create the machine
+    result = await runFnOwner("create", machineConfig);
+    machineId = JSON.parse(decodeFromUtf8Array(result)).id;
+    assert.strictEqual(machineId, 6);
+
 }
 
 runTests();
