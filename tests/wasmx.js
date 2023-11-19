@@ -7,8 +7,8 @@ export const LOG = {
 }
 
 export async function load(storage = {}, env = {}, logType = LOG.debug) {
-    const { main } = await getExports(wasmx(storage, env, logType));
-    return main;
+    const inst = await getExports(wasmx(storage, env, logType));
+    return inst
 }
 
 export function wasmx(storageMap, env, logType = LOG.error) {

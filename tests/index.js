@@ -10,8 +10,6 @@ let currentState, value;
 function runFnWrapped (storage = {}, env = {}) {
     return async function (fnName, args) {
         const argsStr = JSON.stringify({[fnName]: args});
-        console.log("-EXT-argsStr", argsStr);
-        // const defaultSender = new Uint8Array([31,31]);
         const defaultSender = encodeToUtf8Array("sender");
         env = {
             ...env,
@@ -21,8 +19,8 @@ function runFnWrapped (storage = {}, env = {}) {
                 callData: encodeToUtf8Array(argsStr),
             }
         }
-        const mainfn = await load(storage, env, LOG.debug);
-        return mainfn();
+        const instance = await load(storage, env, LOG.debug);
+        return instance._start();
     }
 }
 

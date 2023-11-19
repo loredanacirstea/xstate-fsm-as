@@ -1,72 +1,76 @@
-async function instantiate(module, imports = {}) {
-  const __module0 = imports.wasmx;
+import { getWasi } from "./wasi.js";
+async function instantiate(module, imports = {}, wasi) {
+  const __module0 = imports.wasi_snapshot_preview1;
+  const __module1 = imports.wasmx;
   const adaptedImports = {
-    env: Object.assign(Object.create(globalThis), imports.env || {}, {
-      abort(message, fileName, lineNumber, columnNumber) {
-        // ~lib/builtins/abort(~lib/string/String | null?, ~lib/string/String | null?, u32?, u32?) => void
-        message = __liftString(message >>> 0);
-        fileName = __liftString(fileName >>> 0);
-        lineNumber = lineNumber >>> 0;
-        columnNumber = columnNumber >>> 0;
-        (() => {
-          // @external.js
-          throw Error(`${message} in ${fileName}:${lineNumber}:${columnNumber}`);
-        })();
+    wasi_snapshot_preview1: Object.assign(Object.create(__module0), {
+      fd_write(fd, iovs, iovs_len, nwritten) {
+        // ~lib/bindings/wasi_snapshot_preview1/fd_write(u32, usize, usize, usize) => u16
+        fd = fd >>> 0;
+        iovs = iovs >>> 0;
+        iovs_len = iovs_len >>> 0;
+        nwritten = nwritten >>> 0;
+        return __module0.fd_write(fd, iovs, iovs_len, nwritten);
       },
-      "console.log"(text) {
-        // ~lib/bindings/dom/console.log(~lib/string/String) => void
-        text = __liftString(text >>> 0);
-        console.log(text);
+      proc_exit(rval) {
+        // ~lib/bindings/wasi_snapshot_preview1/proc_exit(u32) => void
+        rval = rval >>> 0;
+        __module0.proc_exit(rval);
+      },
+      poll_oneoff(in_, out, nsubscriptions, nevents) {
+        // ~lib/@assemblyscript/wasi-shim/assembly/bindings/wasi_snapshot_preview1/poll_oneoff(usize, usize, usize, usize) => u16
+        in_ = in_ >>> 0;
+        out = out >>> 0;
+        nsubscriptions = nsubscriptions >>> 0;
+        nevents = nevents >>> 0;
+        return __module0.poll_oneoff(in_, out, nsubscriptions, nevents);
       },
     }),
-    wasmx: Object.assign(Object.create(__module0), {
-      getCallData() {
-        // assembly/wasmx/getCallData() => ~lib/arraybuffer/ArrayBuffer
-        return __lowerBuffer(__module0.getCallData()) || __notnull();
-      },
+    wasmx: Object.assign(Object.create(__module1), {
       storageLoad(key) {
         // assembly/wasmx/storageLoad(~lib/arraybuffer/ArrayBuffer) => ~lib/arraybuffer/ArrayBuffer
         key = __liftBuffer(key >>> 0);
-        return __lowerBuffer(__module0.storageLoad(key)) || __notnull();
+        return __lowerBuffer(__module1.storageLoad(key)) || __notnull();
       },
       revert(message) {
         // assembly/wasmx/revert(~lib/arraybuffer/ArrayBuffer) => void
         message = __liftBuffer(message >>> 0);
-        __module0.revert(message);
+        __module1.revert(message);
+      },
+      getCaller() {
+        // assembly/wasmx/getCaller() => ~lib/arraybuffer/ArrayBuffer
+        return __lowerBuffer(__module1.getCaller()) || __notnull();
+      },
+      grpcRequest(data) {
+        // assembly/wasmx/grpcRequest(~lib/arraybuffer/ArrayBuffer) => ~lib/arraybuffer/ArrayBuffer
+        data = __liftBuffer(data >>> 0);
+        return __lowerBuffer(__module1.grpcRequest(data)) || __notnull();
+      },
+      log(value) {
+        // assembly/wasmx/log(~lib/arraybuffer/ArrayBuffer) => void
+        value = __liftBuffer(value >>> 0);
+        __module1.log(value);
       },
       storageStore(key, value) {
         // assembly/wasmx/storageStore(~lib/arraybuffer/ArrayBuffer, ~lib/arraybuffer/ArrayBuffer) => void
         key = __liftBuffer(key >>> 0);
         value = __liftBuffer(value >>> 0);
-        __module0.storageStore(key, value);
+        __module1.storageStore(key, value);
       },
-      getCaller() {
-        // assembly/wasmx/getCaller() => ~lib/arraybuffer/ArrayBuffer
-        return __lowerBuffer(__module0.getCaller()) || __notnull();
+      getCallData() {
+        // assembly/wasmx/getCallData() => ~lib/arraybuffer/ArrayBuffer
+        return __lowerBuffer(__module1.getCallData()) || __notnull();
       },
       finish(value) {
         // assembly/wasmx/finish(~lib/arraybuffer/ArrayBuffer) => void
         value = __liftBuffer(value >>> 0);
-        __module0.finish(value);
-      },
-      getBalance(address) {
-        // assembly/wasmx/getBalance(~lib/arraybuffer/ArrayBuffer) => ~lib/arraybuffer/ArrayBuffer
-        address = __liftBuffer(address >>> 0);
-        return __lowerBuffer(__module0.getBalance(address)) || __notnull();
-      },
-      grpcRequest(data) {
-        // assembly/wasmx/grpcRequest(~lib/arraybuffer/ArrayBuffer) => ~lib/arraybuffer/ArrayBuffer
-        data = __liftBuffer(data >>> 0);
-        return __lowerBuffer(__module0.grpcRequest(data)) || __notnull();
-      },
-      log(value) {
-        // assembly/wasmx/log(~lib/arraybuffer/ArrayBuffer) => void
-        value = __liftBuffer(value >>> 0);
-        __module0.log(value);
+        __module1.finish(value);
       },
     }),
   };
-  const { exports } = await WebAssembly.instantiate(module, adaptedImports);
+  const inst = await WebAssembly.instantiate(module, adaptedImports);
+  wasi.start(inst);
+  const { exports } = inst;
   const memory = exports.memory || imports.env.memory;
   const adaptedExports = Object.setPrototypeOf({
     main() {
@@ -83,6 +87,11 @@ async function instantiate(module, imports = {}) {
         __release(_fsmConfig);
       }
     },
+    run(id, eventNameBuf) {
+      // assembly/index/run(i32, ~lib/arraybuffer/ArrayBuffer) => void
+      eventNameBuf = __lowerBuffer(eventNameBuf) || __notnull();
+      exports.run(id, eventNameBuf);
+    },
     getCurrentState(id) {
       // assembly/index/getCurrentState(i32) => ~lib/arraybuffer/ArrayBuffer
       return __liftBuffer(exports.getCurrentState(id) >>> 0);
@@ -91,21 +100,6 @@ async function instantiate(module, imports = {}) {
       // assembly/index/getContextValue(i32, ~lib/arraybuffer/ArrayBuffer) => ~lib/arraybuffer/ArrayBuffer
       keyBuf = __lowerBuffer(keyBuf) || __notnull();
       return __liftBuffer(exports.getContextValue(id, keyBuf) >>> 0);
-    },
-    transition(id, stateValueBuf, eventNameBuf) {
-      // assembly/index/transition(i32, ~lib/arraybuffer/ArrayBuffer, ~lib/arraybuffer/ArrayBuffer) => ~lib/arraybuffer/ArrayBuffer
-      stateValueBuf = __retain(__lowerBuffer(stateValueBuf) || __notnull());
-      eventNameBuf = __lowerBuffer(eventNameBuf) || __notnull();
-      try {
-        return __liftBuffer(exports.transition(id, stateValueBuf, eventNameBuf) >>> 0);
-      } finally {
-        __release(stateValueBuf);
-      }
-    },
-    run(id, eventNameBuf) {
-      // assembly/index/run(i32, ~lib/arraybuffer/ArrayBuffer) => void
-      eventNameBuf = __lowerBuffer(eventNameBuf) || __notnull();
-      exports.run(id, eventNameBuf);
     },
   }, exports);
   function __liftBuffer(pointer) {
@@ -117,17 +111,6 @@ async function instantiate(module, imports = {}) {
     const pointer = exports.__new(value.byteLength, 1) >>> 0;
     new Uint8Array(memory.buffer).set(new Uint8Array(value), pointer);
     return pointer;
-  }
-  function __liftString(pointer) {
-    if (!pointer) return null;
-    const
-      end = pointer + new Uint32Array(memory.buffer)[pointer - 4 >>> 2] >>> 1,
-      memoryU16 = new Uint16Array(memory.buffer);
-    let
-      start = pointer >>> 1,
-      string = "";
-    while (end - start > 1024) string += String.fromCharCode(...memoryU16.subarray(start, start += 1024));
-    return string + String.fromCharCode(...memoryU16.subarray(start, end));
   }
   function __liftArray(liftElement, align, pointer) {
     if (!pointer) return null;
@@ -175,17 +158,21 @@ async function instantiate(module, imports = {}) {
       return __dataview.getUint32(pointer, true);
     }
   }
+  exports._start();
   return adaptedExports;
 }
 
 export async function getExports(wasmxImport) {
+    const wasi = getWasi();
+
     const exports = await (async url => instantiate(
         await (async () => {
           try { return await globalThis.WebAssembly.compileStreaming(globalThis.fetch(url)); }
           catch { return globalThis.WebAssembly.compile(await (await import("node:fs/promises")).readFile(url)); }
         })(), {
+          wasi_snapshot_preview1: wasi.wasiImport,
           wasmx: __maybeDefault(wasmxImport),
-        }
+        }, wasi,
     ))(new URL("../build/debug.wasm", import.meta.url));
     return exports
 }
