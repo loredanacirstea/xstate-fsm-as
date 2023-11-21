@@ -70,15 +70,15 @@ export function getCallDataWrap<
     TState extends Typestate<TContext>,
 >(): CallData<TContext, TEvent, TState> {
     const calldStr = String.UTF8.decode(wasmx.getCallData())
-    console.log("--getCallDataWrap--" + calldStr);
+    // console.log("--getCallDataWrap--" + calldStr);
     const calld = JSON.parse<CallData<TContext, TEvent, TState>>(calldStr);
     return calld;
 }
 
 export function getCaller(): string {
-    console.log("--getCaller--")
+    // console.log("--getCaller--")
     const callerbuf = wasmx.getCaller();
-    console.log("--callerbuf-- " + callerbuf.byteLength.toString());
+    // console.log("--callerbuf-- " + callerbuf.byteLength.toString());
     return uint8ArrayToHex(Uint8Array.wrap(callerbuf));
 }
 

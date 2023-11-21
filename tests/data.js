@@ -398,24 +398,24 @@ export const consensusSMTimerConfigOrig = {
     id: "AB-Req-Res-timer",
     initial: "uninitialized",
     states: {
-      "uninitialized": {
+      uninitialized: {
         on: {
           initialize: {
             target: "active",
           },
         },
       },
-      "active": {
+      active: {
         on: {
           receiveRequest: {
-            target: "IReceivedTheRequest",
+            target: "received",
           },
           send: {
             target: "sender",
           },
         },
       },
-      "IReceivedTheRequest": {
+      received: {
         after: {
           "1000": {
             target: "#AB-Req-Res-timer.active",
@@ -424,16 +424,16 @@ export const consensusSMTimerConfigOrig = {
           },
         },
       },
-      "sender": {
+      sender: {
         after: {
           "5000": {
-            target: "#AB-Req-Res-timer.sending request",
+            target: "#AB-Req-Res-timer.sending",
             actions: [raise({ data: "data", type: "sendRequest", address: "address" })],
             meta: {},
           },
         },
       },
-      "sending request": {
+      sending: {
         on: {
           sendRequest: {
             target: "sender",

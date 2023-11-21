@@ -35,8 +35,6 @@ export function instantiate(): void {
 }
 
 export function main(): u8[] {
-  console.log("--main--")
-  Console.log("--Console--main")
     let result: ArrayBuffer;
     const calldata = wasmxwrap.getCallDataWrap<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>();
     if (calldata.run !== null) {

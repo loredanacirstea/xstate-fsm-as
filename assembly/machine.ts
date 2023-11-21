@@ -131,7 +131,7 @@ function handleActions<
 
   for (let i = 0; i < actions.length; i++) {
     const action = actions[i];
-    console.log("--handleActions--type-" + action.type);
+    console.log("* execute action: " + action.type);
     if (action.type === ASSIGN_ACTION) {
       assigned = true;
       let tmpContext: TContext = mergeMap<string>(nextContext, new Map());
@@ -277,12 +277,12 @@ function executeStateActions<
     throw new Error("could not find state config for " + state.value);
   }
   const afterTimers = newstateconfig.after;
-  console.log("===executeStateActions afterTimers===")
+  // console.log("===executeStateActions afterTimers===")
   if (afterTimers == null) {
     return;
   }
   const delayKeys = afterTimers.keys();
-  console.log("===executeStateActions afterTimers=yes==" + delayKeys.join(","))
+  console.log("* execute delayed actions... ")
   const delays = delayKeys
     .map((v: string) => u64(parseInt(v, 10)))
     .sort((a, b) => i32(a - b));
@@ -321,11 +321,11 @@ function executeStateAction<
     action:  StateMachine.ActionObject<TContext, TEvent>,
 ): void {
     const actionType = action.type;
-    console.log("-executeStateAction--action--" + actionType);
+    console.log("* execute action: " + actionType);
 
     if (actionType === RaiseActionType) {
         const ev = action.event;
-        console.log("--executeStateAction-RAISE-" + ev!.type);
+        console.log("* raise: " + ev!.type);
         if (ev === null) {
             wasmx.revert(String.UTF8.encode("raise action is missing event"));
             throw new Error("raise action is missing event");
@@ -567,8 +567,8 @@ function move<
     params: ActionParam[],
     event: TEvent,
 ): TContext {
-    console.log("--move--" + event.type + "--" + event.params.length.toString());
-    console.log("--move--" + params.length.toString());
+    // console.log("--move--" + event.type + "--" + event.params.length.toString());
+    // console.log("--move--" + params.length.toString());
 
     let from: string = "";
     let to: string = "";
@@ -598,7 +598,7 @@ function move<
     if (amount === 0) {
         return ctx;
     }
-    console.log("--move--" + from + "-" + to + "-" + amount.toString());
+    // console.log("--move--" + from + "-" + to + "-" + amount.toString());
     let balanceFrom = getBalance(id, ctx, from);
     let balanceTo = getBalance(id, ctx, to);
     balanceFrom -= i64(amount);
@@ -617,8 +617,8 @@ function approve<
     params: ActionParam[],
     event: TEvent,
 ): TContext {
-    console.log("--approve--" + event.type + "--" + event.params.length.toString());
-    console.log("--approve--" + params.length.toString());
+    // console.log("--approve--" + event.type + "--" + event.params.length.toString());
+    // console.log("--approve--" + params.length.toString());
 
     let spender: string = "";
     let amount: i64 = 0;
@@ -636,7 +636,7 @@ function approve<
         wasmx.revert(String.UTF8.encode("approve event empty address"));
         throw new Error("approve event empty address");
     }
-    console.log("--approve--" + spender + "-" + amount.toString());
+    // console.log("--approve--" + spender + "-" + amount.toString());
     if (amount === 0) {
         return ctx;
     }
@@ -785,7 +785,7 @@ export class Service<
   }
 
   send(event: TEvent): void {
-    console.log("--send-" + event.type);
+    console.log("* send event: " + event.type);
     if (this.status !== InterpreterStatus.Running) {
       return;
     }
@@ -874,7 +874,7 @@ export class ServiceExternal<
   }
 
   toInternal(): Service<TContext, TEvent, TState> {
-    console.log("--service toInternal()--");
+    // console.log("--service toInternal()--");
     const machine = this.machine.toInternal();
     const context: TContext = new Map<string, string>();
     for (let i = 0; i < this.state.context.length; i++) {
@@ -893,7 +893,7 @@ export class ServiceExternal<
         this.state.changed,
     )
     const status = this.status;
-    console.log("--service toInternal()-END-");
+    // console.log("--service toInternal()-END-");
     return new Service(this.id, machine, state, status);
   }
 }
@@ -963,7 +963,7 @@ export class MachineExternal<
   }
 
   toInternal(): Machine<TContext, TEvent, TState> {
-    console.log("-Machine toInternal--")
+    // console.log("-Machine toInternal--")
     const context: TContext = new Map<string,string>();
     const ctxpairs = this.config.context;
     for (let i = 0; i < ctxpairs.length; i++) {
@@ -992,7 +992,7 @@ export class MachineExternal<
         iniactions,
         this.initialState.changed,
     );
-    console.log("-Machine toInternal-END-")
+    // console.log("-Machine toInternal-END-")
     return new Machine<TContext, TEvent, TState>(this.id, config, initialState);
   }
 }
@@ -1066,7 +1066,7 @@ export class Machine<
         throw new Error("state not found: " + value);
     }
     // console.log("----transition-stateConfig-" + stateConfig.on.keys().join(","));
-    console.log("-transition-event--" + eventObject.type);
+    // console.log("-transition-event--" + eventObject.type);
 
     if (stateConfig.on) {
       if (!stateConfig.on.has(eventObject.type)) {
@@ -1074,7 +1074,7 @@ export class Machine<
         throw new Error("cannot apply event in current state")
       }
       const transition = stateConfig.on.get(eventObject.type);
-      console.log("----transition-target--" + transition.target)
+      console.log("* transition next target: " + transition.target)
 
       const transitions: Array<
         StateMachine.Transition<TContext, TEvent, string>
@@ -1101,7 +1101,7 @@ export class Machine<
         const isTargetless = target === null;
 
         const nextStateValue = target || value;
-        console.log("----transition-nextStateValue--" + nextStateValue)
+        // console.log("----transition-nextStateValue--" + nextStateValue)
         // const nextStateConfig = this.config.states.get(nextStateValue);
 
         const nextStateConfig = findStateInfo<TContext,TEvent,TState>(this.config.states, nextStateValue);
@@ -1111,7 +1111,7 @@ export class Machine<
             throw new Error("state not found: " + nextStateValue);
         }
 
-        console.log("----transition-nextStateConfig--" + nextStateConfig.on.keys().join(","))
+        // console.log("----transition-nextStateConfig--" + nextStateConfig.on.keys().join(","))
 
         if (guard && !executeGuard<TContext, TEvent, TState>(this.id, context, guard, event)) {
             wasmx.revert(String.UTF8.encode("cannot execute transition; guard: " + guard));
@@ -1171,7 +1171,7 @@ export class Machine<
                         }
                     }
                 }
-                console.log("--raise add action!-" + act.type);
+                // console.log("--raise add action!-" + act.type);
                 allActions.push(act);
             }
             // for (let i = 0; i < stateConfig.exit.length; i++) {
@@ -1220,7 +1220,7 @@ export class Machine<
           }
           // console.log("--findStateInfo--END2=");
 
-          console.log("-transition-resolvedTarget" + resolvedTarget);
+          console.log("* transition next target: " + resolvedTarget);
 
           return new State<TContext, TEvent, TState>(resolvedTarget, nextContext, nonAssignActions, target !== value || nonAssignActions.length > 0 || assigned);
           // matches: createMatcher(resolvedTarget)
@@ -1269,7 +1269,7 @@ export class Machine<
       const isTargetless = target === null;
 
       const nextStateValue = target || value;
-      console.log("----transition-nextStateValue--" + nextStateValue)
+      // console.log("----transition-nextStateValue--" + nextStateValue)
       // const nextStateConfig = this.config.states.get(nextStateValue);
 
       const nextStateConfig = findStateInfo<TContext,TEvent,TState>(this.config.states, nextStateValue);
@@ -1279,7 +1279,7 @@ export class Machine<
           throw new Error("state not found: " + nextStateValue);
       }
 
-      console.log("----transition-nextStateConfig--" + nextStateConfig.on.keys().join(","))
+      // console.log("----transition-nextStateConfig--" + nextStateConfig.on.keys().join(","))
 
       // if (guard && !executeGuard<TContext, TEvent, TState>(this.id, context, guard, event)) {
       //     wasmx.revert(String.UTF8.encode("cannot execute transition; guard: " + guard));
@@ -1339,7 +1339,7 @@ export class Machine<
                       }
                   }
               }
-              console.log("--raise add action!-" + act.type);
+              // console.log("--raise add action!-" + act.type);
               allActions.push(act);
           }
           // for (let i = 0; i < stateConfig.exit.length; i++) {
@@ -1389,7 +1389,7 @@ export class Machine<
         }
         // console.log("--findStateInfo--END2=");
 
-        console.log("-transition-resolvedTarget" + resolvedTarget);
+        console.log("* transition next target: " + resolvedTarget);
 
         return new State<TContext, TEvent, TState>(resolvedTarget, nextContext, nonAssignActions, target !== value || nonAssignActions.length > 0 || assigned);
         // matches: createMatcher(resolvedTarget)
@@ -1437,7 +1437,7 @@ export function createInternal<
 
   const states = StateInfoClassExternal.toInternalFromArray(fsmConfigExternal.states);
 
-  console.log("----config3-" + fsmConfigExternal.context.length.toString());
+  // console.log("----config3-" + fsmConfigExternal.context.length.toString());
 
   for (let i = 0; i < fsmConfigExternal.context.length; i++) {
     const param = fsmConfigExternal.context[i];
@@ -1459,20 +1459,20 @@ export function createInternal<
   const expectedId = wasmxwrap.loadCounter();
   const machine = _createMachine<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>(expectedId, fsmConfig, implementations);
 
-  console.log("--_createMachine--end--")
+  // console.log("--_createMachine--end--")
 
   const service = new Service<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>(expectedId, machine, null , InterpreterStatus.NotStarted);
 
-    console.log("--service.start--start--")
+    // console.log("--service.start--start--")
 
     service.start();
-    console.log("--service.start--end--")
+    // console.log("--service.start--end--")
 
     const serviceJson = ServiceExternal.fromInternal(service);
-    console.log("--service external--");
+    // console.log("--service external--");
     const data = JSON.stringify<ServiceExternal<TContext, TEvent, TState>>(serviceJson);
 
-    console.log("--_createMachine--data-- " + data);
+    // console.log("--_createMachine--data-- " + data);
 
   // store service context
     const id = wasmxwrap.createService(data);
@@ -1481,15 +1481,15 @@ export function createInternal<
         throw new Error("id does not match expected");
     }
     // store owner
-    console.log("--store owner-- ");
+    // console.log("--store owner-- ");
     wasmxwrap.storeOwner(id, wasmxwrap.getCaller());
-    console.log("--_createMachine--id-- " + id.toString());
+    // console.log("--_createMachine--id-- " + id.toString());
   return String.UTF8.encode(`{"id":${id}}`);
 }
 
 export function getCurrentState(id: i32): ArrayBuffer {
   const service = loadServiceFromId<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>(id);
-  console.log("-getCurrentState-service-loaded-")
+  // console.log("-getCurrentState-service-loaded-")
   if (!service) {
     wasmx.revert(String.UTF8.encode("no service"));
     throw new Error("no service");
@@ -1513,7 +1513,7 @@ export function getContextValueInternal(id: i32, key: string): ArrayBuffer {
         wasmx.revert(String.UTF8.encode("no ctx"));
         throw new Error("no ctx");
     }
-    console.log("--getContext--" + ctx.keys().join(","));
+    // console.log("--getContext--" + ctx.keys().join(","));
     if (ctx.has(key)) {
         return String.UTF8.encode(ctx.get(key));
     }
@@ -1530,13 +1530,13 @@ export function run(
 }
 
 export function runInternal(id: i32, event: EventClass): ArrayBuffer {
-    console.log("--runInternal--" + id.toString() + "--" + event.type);
+    // console.log("--runInternal--" + id.toString() + "--" + event.type);
     const service = loadServiceFromId<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>(id);
     if (!service) {
         wasmx.revert(String.UTF8.encode("no service"));
         throw new Error("no service");
     }
-    console.log("--run--transition--" + event.type);
+    // console.log("--run--transition--" + event.type);
     service.send(event);
     // save service in storage again;
     saveService(id, service);
@@ -1600,9 +1600,9 @@ export function findStateInfo<
     }
     // TODO here, we should only look in the current state, not the machine states
     const keys = states.keys();
-    console.log("--findStateInfo--" + stateName + "---" + keys.join(","));
+    // console.log("--findStateInfo--" + stateName + "---" + keys.join(","));
     for (let i = 0; i < keys.length; i++) {
-        console.log("--findStateInfo--" + keys[i]);
+        // console.log("--findStateInfo--" + keys[i]);
         const stateinfo = states.get(keys[i]);
         if (keys[i] === stateName) return stateinfo;
         if (stateinfo.states && stateinfo.states.keys().length > 0) {
@@ -1623,7 +1623,7 @@ export function findStateInfoByPath<
 ): StateInfo<TContext, TEvent> | null {
     let currentStates = states;
     let state: StateInfo<TContext, TEvent> | null = null;
-    console.log("--findStateInfoByPath--" + statePath.join("."));
+    // console.log("--findStateInfoByPath--" + statePath.join("."));
     for (let k = 0; k < statePath.length; k++) {
         const currentStateName = statePath[k];
         state = currentStates.get(currentStateName);
