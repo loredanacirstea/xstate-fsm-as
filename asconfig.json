@@ -1,5 +1,4 @@
 {
-  "extends": "./node_modules/@assemblyscript/wasi-shim/asconfig.json",
   "targets": {
     "debug": {
       "outFile": "build/debug.wasm",
@@ -19,7 +18,6 @@
   },
   "options": {
     "bindings": "esm",
-    "transform": ["json-as/transform"],
-    "exportStart": "_start"
+    "transform": ["json-as/transform"]
   }
 }

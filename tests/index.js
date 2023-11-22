@@ -30,7 +30,7 @@ function runFnWrapped (storage = {}, env = {}) {
             }
         }
         const instance = await load(storage, env, LOG.debug);
-        return instance._start();
+        return instance.main();
     }
 }
 
@@ -66,7 +66,6 @@ async function runTests() {
     currentState = await runFn("getCurrentState", {id: machineId});
     console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
     assert.strictEqual(decodeFromUtf8Array(currentState), "blue");
-
 
     ///// machine 2
 

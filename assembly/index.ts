@@ -22,14 +22,9 @@ import {
   EventualArgs,
 } from './types';
 import * as data from './data';
-import { Console } from "as-wasi/assembly";
 
-// WASI
-main()
-// TODO uncomment
-// export function wasmx_env_2(): void {}
+export function wasmx_env_2(): void {}
 
-// todo for reactor model
 export function instantiate(): void {
   const calld = JSON.parse<ConfigExternal<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>>(data.networkState2);
   createInternal<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>(calld, null);
@@ -61,13 +56,11 @@ export function eventual(): void {
   const calld = wasmx.getCallData();
   console.log("* eventual: calld: " + calld.byteLength.toString());
   const intervalId = parseUint8ArrayToI32BigEndian(Uint8Array.wrap(calld.slice(0, 4)));
-
   const argsStr = String.UTF8.decode(calld.slice(4));
   console.log("* eventual: args: " + argsStr);
   const _args = JSON.parse<TimerArgs>(argsStr);
   console.log("* eventual: parsed args");
   _eventual(intervalId, _args);
-
 
   // const calldStr = String.UTF8.decode(wasmx.getCallData());
   // console.log("* eventual: " + calldStr);
