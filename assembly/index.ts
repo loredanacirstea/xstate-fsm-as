@@ -4,6 +4,7 @@ import {
   getCurrentState as _getCurrentState,
   getContextValue as _getContextValue,
   run as _run,
+  eventual as _eventual,
   runInternal,
   createInternal,
   getContextValueInternal,
@@ -17,11 +18,10 @@ import {
   Typestate,
   EventClass,
   ConfigExternal,
+  TimerArgs,
 } from './types';
 import * as data from './data';
 import { Console } from "as-wasi/assembly";
-
-Console.log("Hello World!");
 
 // WASI
 main()
@@ -53,6 +53,12 @@ export function main(): u8[] {
     }
     wasmx.finish(result);
     return arrayBufferToU8Array(result);
+}
+
+export function eventual(serviceId: i32, args: ArrayBuffer): void {
+  const argsStr = String.UTF8.decode(args);
+  const _args = JSON.parse<TimerArgs>(argsStr);
+  return _eventual(serviceId, _args);
 }
 
 export function create(

@@ -36,6 +36,7 @@ import {
   TransitionExternal,
   EventClassExternal,
   RaiseActionType,
+  TimerArgs,
   // ActionMap,
 } from './types';
 import { hexToUint8Array } from "./utils";
@@ -282,30 +283,15 @@ function executeStateActions<
     return;
   }
   const delayKeys = afterTimers.keys();
-  console.log("* execute delayed actions... ")
-  const delays = delayKeys
-    .map((v: string) => u64(parseInt(v, 10)))
-    .sort((a, b) => i32(a - b));
+  console.log("* setting timed actions... ")
 
-  for (let i = 0; i < delays.length; i++) {
-    const delay = delays[i]; // delay is in milliseconds
-    const nsdelay = delay * 1000000; // nanoseconds
-    const transition = afterTimers.get(delay.toString());
-    if (!transition) {
-      wasmx.revert(String.UTF8.encode("delayed transition not found: " + delay.toString()));
-      throw new Error("delayed transition not found: " + delay.toString());
-    }
-    Time.sleep(nsdelay);
-    // just a copied transition
-    service.state = service.machine.applyTransition(state, transition);
-    executeStateActions<TContext, TEvent, TState>(service, service.id, service.state, event);
-    // TODO listeners?
-
-    // for (let j = 0; j < transition.actions.length; j++) {
-    //   const action = transition.actions[j];
-    //   // if not raise, execute
-    //   // executeStateAction<TContext, TEvent, TState>(service, id, state, event, action);
-    // }
+  for (let i = 0; i < delayKeys.length; i++) {
+    // delay is in milliseconds
+    const delay =  u64(parseInt(delayKeys[i], 10));
+    const args = new TimerArgs(delayKeys[i]);
+    const argsStr = JSON.stringify<TimerArgs>(args);
+    const intervalId = wasmx.startInterval(delay, service.id, String.UTF8.encode(argsStr));
+    console.log("===intervalId==" + intervalId.toString());
   }
 }
 
@@ -1636,4 +1622,33 @@ export function findStateInfoByPath<
         }
     }
     return state;
+}
+
+export function eventual(serviceId: i32, args: TimerArgs): void {
+  const service = loadServiceFromId<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>(serviceId);
+  if (!service) {
+    wasmx.revert(String.UTF8.encode("no service"));
+    throw new Error("no service");
+  }
+
+  const newstateconfig = findStateInfo<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>(service.machine.config.states, service.state.value);
+  if (!newstateconfig) {
+    wasmx.revert(String.UTF8.encode("could not find state config for " + service.state.value));
+    throw new Error("could not find state config for " + service.state.value);
+  }
+  const afterTimers = newstateconfig.after;
+  if (afterTimers == null) {
+    return;
+  }
+  console.log("* execute delayed action... " + args.delay)
+  // delay is in milliseconds
+  const transition = afterTimers.get(args.delay);
+  if (!transition) {
+    wasmx.revert(String.UTF8.encode("delayed transition not found: " + args.delay));
+    throw new Error("delayed transition not found: " + args.delay);
+  }
+  // just a copied transition
+  service.state = service.machine.applyTransition(service.state, transition);
+  executeStateActions<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>(service, service.id, service.state, new EventClass("", []));
+  // TODO listeners?
 }

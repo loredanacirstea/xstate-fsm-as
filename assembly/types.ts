@@ -750,3 +750,12 @@ export class ConfigExternal<
     this.states = states;
   }
 }
+
+// @ts-ignore
+@serializable
+export class TimerArgs {
+  delay: string;
+  constructor(delay: string) {
+    this.delay = delay;
+  }
+}

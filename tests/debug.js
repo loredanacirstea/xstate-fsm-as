@@ -51,6 +51,11 @@ async function instantiate(module, imports = {}, wasi) {
         value = __liftBuffer(value >>> 0);
         __module1.log(value);
       },
+      startInterval(time, callbackId, args) {
+        // assembly/wasmx/startInterval(i64, i32, ~lib/arraybuffer/ArrayBuffer) => i32
+        args = __liftBuffer(args >>> 0);
+        return __module1.startInterval(time, callbackId, args);
+      },
       storageStore(key, value) {
         // assembly/wasmx/storageStore(~lib/arraybuffer/ArrayBuffer, ~lib/arraybuffer/ArrayBuffer) => void
         key = __liftBuffer(key >>> 0);
