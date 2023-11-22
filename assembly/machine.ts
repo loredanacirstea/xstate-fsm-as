@@ -266,10 +266,12 @@ function executeStateActions<
     state: StateMachine.State<TContext, TEvent, TState>,
     event: TEvent
 ): void {
+  console.log("* executeStateActions: ")
   for (let i = 0; i < state.actions.length; i++) {
     const action = state.actions[i];
     executeStateAction<TContext, TEvent, TState>(service, id, state, event, action);
   }
+  console.log("* executeStateActions after actions " + state.value)
 
   // timed actions from the new target state
   const newstateconfig = findStateInfo<TContext,TEvent,TState>(service.machine.config.states, state.value);
@@ -283,14 +285,17 @@ function executeStateActions<
     return;
   }
   const delayKeys = afterTimers.keys();
-  console.log("* setting timed actions... ")
+  console.log("* setting timed actions for " + state.value);
+  console.log("* setting timed actions... " + delayKeys.join(","));
+
+  saveService(service.id, service);
 
   for (let i = 0; i < delayKeys.length; i++) {
     // delay is in milliseconds
-    const delay =  u64(parseInt(delayKeys[i], 10));
-    const args = new TimerArgs(delayKeys[i]);
+    const delay = u64(parseInt(delayKeys[i], 10));
+    const args = new TimerArgs(delayKeys[i], service.id, state.value);
     const argsStr = JSON.stringify<TimerArgs>(args);
-    const intervalId = wasmx.startInterval(delay, service.id, String.UTF8.encode(argsStr));
+    const intervalId = wasmx.startInterval(i32(1), delay, String.UTF8.encode(argsStr));
     console.log("===intervalId==" + intervalId.toString());
   }
 }
@@ -1222,6 +1227,7 @@ export class Machine<
     state: StateMachine.State<TContext, TEvent, TState>,
     transition: StateMachine.Transition<TContext, TEvent, string>
   ): StateMachine.State<TContext, TEvent, TState> {
+    console.log("* applyTransition: " + transition.target);
     const value = state.value;
     const context = state.context;
     const stateConfig = findStateInfo<TContext,TEvent,TState>(this.config.states, value);
@@ -1624,11 +1630,19 @@ export function findStateInfoByPath<
     return state;
 }
 
-export function eventual(serviceId: i32, args: TimerArgs): void {
-  const service = loadServiceFromId<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>(serviceId);
+export function eventual(intervalId: i32, args: TimerArgs): void {
+  console.log("* eventual: " + args.serviceId.toString() + "--" + args.delay);
+  const service = loadServiceFromId<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>(args.serviceId);
   if (!service) {
     wasmx.revert(String.UTF8.encode("no service"));
     throw new Error("no service");
+  }
+  console.log("* eventual - finding state: " + service.state.value);
+
+  if (service.state.value !== args.state) {
+    // we are in the wrong state, so the interval must be stopped
+    wasmx.stopInterval(intervalId);
+    return;
   }
 
   const newstateconfig = findStateInfo<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>(service.machine.config.states, service.state.value);
@@ -1636,8 +1650,11 @@ export function eventual(serviceId: i32, args: TimerArgs): void {
     wasmx.revert(String.UTF8.encode("could not find state config for " + service.state.value));
     throw new Error("could not find state config for " + service.state.value);
   }
+  console.log("* eventual - finding after");
   const afterTimers = newstateconfig.after;
-  if (afterTimers == null) {
+  if (afterTimers == null || !afterTimers.has(args.delay)) {
+    // we are in the wrong state, so the interval must be stopped
+    wasmx.stopInterval(intervalId);
     return;
   }
   console.log("* execute delayed action... " + args.delay)
@@ -1651,4 +1668,6 @@ export function eventual(serviceId: i32, args: TimerArgs): void {
   service.state = service.machine.applyTransition(service.state, transition);
   executeStateActions<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>(service, service.id, service.state, new EventClass("", []));
   // TODO listeners?
+
+  saveService(args.serviceId, service);
 }

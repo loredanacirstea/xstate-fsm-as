@@ -755,7 +755,22 @@ export class ConfigExternal<
 @serializable
 export class TimerArgs {
   delay: string;
-  constructor(delay: string) {
+  serviceId: i32;
+  state: string;
+  constructor(delay: string, serviceId: i32, state: string) {
     this.delay = delay;
+    this.serviceId = serviceId;
+    this.state = state;
   }
+}
+
+// @ts-ignore
+@serializable
+export class EventualArgs {
+  intervalId: i32;
+  args: Uint8Array;
+  constructor(intervalId: i32, args: Uint8Array) {
+    this.intervalId = intervalId;
+    this.args = args;
+}
 }

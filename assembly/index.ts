@@ -11,7 +11,7 @@ import {
 } from './machine';
 import * as wasmx from './wasmx';
 import * as wasmxwrap from './wasmx_wrap';
-import {arrayBufferToU8Array} from './utils';
+import {arrayBufferToU8Array, parseUint8ArrayToI32BigEndian} from './utils';
 import {
   ContextGeneral,
   EventObject,
@@ -19,6 +19,7 @@ import {
   EventClass,
   ConfigExternal,
   TimerArgs,
+  EventualArgs,
 } from './types';
 import * as data from './data';
 import { Console } from "as-wasi/assembly";
@@ -55,10 +56,29 @@ export function main(): u8[] {
     return arrayBufferToU8Array(result);
 }
 
-export function eventual(serviceId: i32, args: ArrayBuffer): void {
-  const argsStr = String.UTF8.decode(args);
+export function eventual(): void {
+  console.log("* eventual");
+  const calld = wasmx.getCallData();
+  console.log("* eventual: calld: " + calld.byteLength.toString());
+  const intervalId = parseUint8ArrayToI32BigEndian(Uint8Array.wrap(calld.slice(0, 4)));
+
+  const argsStr = String.UTF8.decode(calld.slice(4));
+  console.log("* eventual: args: " + argsStr);
   const _args = JSON.parse<TimerArgs>(argsStr);
-  return _eventual(serviceId, _args);
+  console.log("* eventual: parsed args");
+  _eventual(intervalId, _args);
+
+
+  // const calldStr = String.UTF8.decode(wasmx.getCallData());
+  // console.log("* eventual: " + calldStr);
+  // const calld = JSON.parse<EventualArgs>(calldStr);
+  // const intervalId = calld.intervalId;
+  // console.log("* eventual: " + intervalId.toString())
+  // const argsStr = String.UTF8.decode(calld.args.buffer);
+  // console.log("* eventual: args: " + argsStr);
+  // const _args = JSON.parse<TimerArgs>(argsStr);
+  // console.log("* eventual: parsed args");
+  // _eventual(intervalId, _args);
 }
 
 export function create(

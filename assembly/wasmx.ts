@@ -14,6 +14,6 @@ export declare function getAccount(address: ArrayBuffer): ArrayBuffer
 export declare function externalCall(data: ArrayBuffer): ArrayBuffer
 
 export declare function grpcRequest(data: ArrayBuffer): ArrayBuffer
-export declare function startInterval(time: i64, callbackId: i32, args: ArrayBuffer): i32
+export declare function startInterval(repeat: i32, time: i64, args: ArrayBuffer): i32
 export declare function stopInterval(intervalId: i32): void
 

@@ -35,3 +35,15 @@ export function hexToUint8Array(value: string): Uint8Array {
     }
     return arr;
 }
+
+export function parseUint8ArrayToI32BigEndian(bytes: Uint8Array): i32 {
+    if (bytes.length < 4) {
+        throw new Error("Uint8Array is too small to contain an i32.");
+    }
+    return (
+        (bytes[0] << 24) |
+        (bytes[1] << 16) |
+        (bytes[2] << 8) |
+        (bytes[3] << 0)
+    );
+}
