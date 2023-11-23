@@ -1,3 +1,5 @@
+import * as wasmx from './wasmx';
+
 export function arrayBufferToU8Array(buffer: ArrayBuffer): u8[] {
     const length = buffer.byteLength;
     const uint8View = Uint8Array.wrap(buffer);
@@ -46,4 +48,9 @@ export function parseUint8ArrayToI32BigEndian(bytes: Uint8Array): i32 {
         (bytes[2] << 8) |
         (bytes[3] << 0)
     );
+}
+
+export function revert(message: string): void {
+    wasmx.revert(String.UTF8.encode(message));
+    throw new Error(message);
 }

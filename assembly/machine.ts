@@ -38,7 +38,10 @@ import {
   TimerArgs,
   // ActionMap,
 } from './types';
-import { hexToUint8Array } from "./utils";
+import { hexToUint8Array, revert } from "./utils";
+import * as actionsCounter from "./actions_counter";
+import * as actionsErc20 from "./actions_erc20";
+import * as actionsRaft from "./actions_raft";
 
 export {
   StateMachine,
@@ -182,8 +185,8 @@ TState extends Typestate<TContext>,
     event: TEvent,
 ): boolean {
     if (guard === "isAdmin") return isAdmin<TContext, TEvent, TState>(id, ctx, []);
-    if (guard === "hasEnoughBalance") return hasEnoughBalance<TContext, TEvent, TState>(id, ctx, [], event);
-    if (guard === "hasEnoughAllowance") return hasEnoughAllowance<TContext, TEvent, TState>(id, ctx, [], event);
+    if (guard === "hasEnoughBalance") return actionsErc20.hasEnoughBalance<TContext, TEvent, TState>(id, ctx, [], event);
+    if (guard === "hasEnoughAllowance") return actionsErc20.hasEnoughAllowance<TContext, TEvent, TState>(id, ctx, [], event);
 
     return true;
 }
@@ -275,8 +278,7 @@ function executeStateActions<
   // timed actions from the new target state
   const newstateconfig = findStateInfo<TContext,TEvent,TState>(service.machine.config.states, state.value);
   if (!newstateconfig) {
-    wasmx.revert(String.UTF8.encode("could not find state config for " + state.value));
-    throw new Error("could not find state config for " + state.value);
+    return revert("could not find state config for " + state.value);
   }
   const afterTimers = newstateconfig.after;
   // console.log("===executeStateActions afterTimers===")
@@ -291,7 +293,19 @@ function executeStateActions<
 
   for (let i = 0; i < delayKeys.length; i++) {
     // delay is in milliseconds
-    const delay = u64(parseInt(delayKeys[i], 10));
+    let delay = u64(0);
+    const delayKey = parseInt(delayKeys[i], 10);
+    if (Number.isNaN(delayKey)) {
+      // This should be a context variable
+      if (!state.context.has(delayKeys[i])) {
+        return revert("delay key not found in context: " + delayKeys[i]);
+      }
+      const value = state.context.get(delayKeys[i]);
+      delay = u64(parseInt(value, 10));
+    } else {
+      delay = u64(delayKey);
+    }
+    console.log("===delay===" + delay.toString())
     const args = new TimerArgs(delayKeys[i], service.id, state.value);
     const argsStr = JSON.stringify<TimerArgs>(args);
     const intervalId = wasmx.startInterval(i32(1), delay, String.UTF8.encode(argsStr));
@@ -317,25 +331,24 @@ function executeStateAction<
         const ev = action.event;
         console.log("* raise: " + ev!.type);
         if (ev === null) {
-            wasmx.revert(String.UTF8.encode("raise action is missing event"));
-            throw new Error("raise action is missing event");
+            return revert("raise action is missing event");
         }
         const _event: TEvent = new EventClass(ev.type, ev.params);
         service.send(_event);
         return;
     }
     if (actionType === "mint") {
-        const newctx = mint<TContext, TEvent, TState>(id, state.context, action.params, event);
+        const newctx = actionsErc20.mint<TContext, TEvent, TState>(id, state.context, action.params, event);
         state.context = newctx;
         return;
     }
     if (actionType === "move") {
-        const newctx = move<TContext, TEvent, TState>(id, state.context, action.params, event);
+        const newctx = actionsErc20.move<TContext, TEvent, TState>(id, state.context, action.params, event);
         state.context = newctx;
         return;
     }
     if (actionType === "approve") {
-        const newctx = approve<TContext, TEvent, TState>(id, state.context, action.params, event);
+        const newctx = actionsErc20.approve<TContext, TEvent, TState>(id, state.context, action.params, event);
         state.context = newctx;
         return;
     }
@@ -345,12 +358,12 @@ function executeStateAction<
       return;
     }
     if (actionType === "logTransfer") {
-        const newctx = logTransfer<TContext, TEvent, TState>(id, state.context, action.params, event);
+        const newctx = actionsErc20.logTransfer<TContext, TEvent, TState>(id, state.context, action.params, event);
         state.context = newctx;
         return;
     }
     if (actionType === "increment") {
-      const newctx = increment<TContext, TEvent, TState>(state.context, action.params);
+      const newctx = actionsCounter.increment<TContext, TEvent, TState>(state.context, action.params);
       state.context = newctx;
       return;
     }
@@ -358,6 +371,31 @@ function executeStateAction<
         const newctx = log<TContext, TEvent, TState>(state.context, action.params);
         state.context = newctx;
         return
+    }
+    if (actionType === "processAppendEntries") {
+      const newctx = actionsRaft.processAppendEntries<TContext, TEvent, TState>(id, state.context, action.params, event);
+      state.context = newctx;
+      return;
+    }
+    if (actionType === "sendHeartbeatResponse") {
+      const newctx = actionsRaft.sendHeartbeatResponse<TContext, TEvent, TState>(id, state.context, action.params, event);
+      state.context = newctx;
+      return;
+    }
+    if (actionType === "sendAppendEntries") {
+      const newctx = actionsRaft.sendAppendEntries<TContext, TEvent, TState>(id, state.context, action.params, event);
+      state.context = newctx;
+      return;
+    }
+    if (actionType === "sendNewTransactionResponse") {
+      const newctx = actionsRaft.sendNewTransactionResponse<TContext, TEvent, TState>(id, state.context, action.params, event);
+      state.context = newctx;
+      return;
+    }
+    if (actionType === "appendLog") {
+      const newctx = actionsRaft.appendLog<TContext, TEvent, TState>(id, state.context, action.params, event);
+      state.context = newctx;
+      return;
     }
     // state.context
     // action.type
@@ -376,327 +414,6 @@ function isAdmin<
   const caller = wasmxwrap.getCaller();
   const owner = wasmxwrap.loadOwner(id);
  return caller === owner;
-}
-
-function hasEnoughBalance<
-  TContext extends Map<string,string>,
-  TEvent extends EventObject,
-  TState extends Typestate<TContext>,
->(
-  id: i32,
-  ctx: TContext,
-  params: ActionParam[],
-  event: TEvent,
-): boolean {
-    let from: string = "";
-    let amount: i64 = 0;
-    for (let i = 0; i < event.params.length; i++) {
-        if (event.params[i].key === "from") {
-            from = event.params[i].value;
-            continue;
-        }
-        if (event.params[i].key === "amount") {
-            amount = i64(parseInt(event.params[i].value));
-            continue;
-        }
-    }
-    if (from === "") {
-        wasmx.revert(String.UTF8.encode("move event empty from address"));
-        throw new Error("move event empty from address");
-    }
-    if (amount === 0) {
-        return true;
-    }
-    const balance = getBalance(id, ctx, from)
-    return balance >= amount;
-}
-
-function hasEnoughAllowance<
-  TContext extends Map<string,string>,
-  TEvent extends EventObject,
-  TState extends Typestate<TContext>,
->(
-  id: i32,
-  ctx: TContext,
-  params: ActionParam[],
-  event: TEvent,
-): boolean {
-    let owner: string = "";
-    let amount: i64 = 0;
-    for (let i = 0; i < event.params.length; i++) {
-        if (event.params[i].key === "from") {
-            owner = event.params[i].value;
-            continue;
-        }
-        if (event.params[i].key === "amount") {
-            amount = i64(parseInt(event.params[i].value));
-            continue;
-        }
-    }
-    if (owner === "") {
-        wasmx.revert(String.UTF8.encode("move event empty from address"));
-        throw new Error("move event empty from address");
-    }
-    if (amount === 0) {
-        return true;
-    }
-    const caller = wasmxwrap.getCaller();
-    const allowance = getAllowance(id, ctx, owner, caller);
-    return allowance >= amount;
-}
-
-function getBalance<
-    TContext extends Map<string,string>,
->(
-    id: i32,
-    ctx: TContext,
-    addr: string,
-): i64 {
-    const key = getBalanceKey(id, addr);
-    if (ctx.has(key)) {
-        const balancestr = ctx.get(key);
-        const balance = parseInt(balancestr);
-        return i64(balance);
-    }
-    return i64(0);
-}
-
-function setBalance<
-    TContext extends Map<string,string>,
->(
-    id: i32,
-    ctx: TContext,
-    addr: string,
-    amount: i64,
-): TContext {
-    const key = getBalanceKey(id, addr);
-    ctx.set(key, amount.toString());
-    return ctx;
-}
-
-function getAllowance<
-    TContext extends Map<string,string>,
->(
-    id: i32,
-    ctx: TContext,
-    owner: string,
-    spender: string,
-): i64 {
-    const key = getAllowanceKey(id, owner, spender);
-    if (ctx.has(key)) {
-        const allowancestr = ctx.get(key);
-        const allowance = parseInt(allowancestr);
-        return i64(allowance);
-    }
-    return i64(0);
-}
-
-function setAllowance<
-    TContext extends Map<string,string>,
->(
-    id: i32,
-    ctx: TContext,
-    owner: string,
-    spender: string,
-    amount: i64,
-): TContext {
-    const key = getAllowanceKey(id, owner, spender);
-    ctx.set(key, amount.toString());
-    return ctx;
-}
-
-function getBalanceKey(id: i32, addr: string): string {
-    return "balance_" + id.toString() + "_" + addr;
-}
-
-function getAllowanceKey(id: i32, owner: string, spender: string): string {
-    return "allowance_" + id.toString() + "_" + owner + "_" + spender;
-}
-
-function mint<
-  TContext extends Map<string,string>,
-  TEvent extends EventObject,
-  TState extends Typestate<TContext>,
->(
-    id: i32,
-    ctx: TContext,
-    params: ActionParam[],
-    event: TEvent,
-): TContext {
-    let addr: string = "";
-    let amount: i64 = 0;
-    for (let i = 0; i < event.params.length; i++) {
-        if (event.params[i].key === "to") {
-            addr = event.params[i].value;
-            continue;
-        }
-        if (event.params[i].key === "amount") {
-            amount = i64(parseInt(event.params[i].value));
-            continue;
-        }
-    }
-    if (addr === "") {
-        wasmx.revert(String.UTF8.encode("mint event empty address"));
-        throw new Error("mint event empty address");
-    }
-    if (amount === 0) {
-        return ctx;
-    }
-    let balance = getBalance(id, ctx, addr);
-    balance += i64(amount);
-    return setBalance(id, ctx, addr, balance);
-}
-
-function move<
-    TContext extends Map<string,string>,
-    TEvent extends EventObject,
-    TState extends Typestate<TContext>,
->(
-    id: i32,
-    ctx: TContext,
-    params: ActionParam[],
-    event: TEvent,
-): TContext {
-    // console.log("--move--" + event.type + "--" + event.params.length.toString());
-    // console.log("--move--" + params.length.toString());
-
-    let from: string = "";
-    let to: string = "";
-    let amount: i64 = 0;
-    for (let i = 0; i < event.params.length; i++) {
-        if (event.params[i].key === "from") {
-            from = event.params[i].value;
-            continue;
-        }
-        if (event.params[i].key === "to") {
-            to = event.params[i].value;
-            continue;
-        }
-        if (event.params[i].key === "amount") {
-            amount = i64(parseInt(event.params[i].value));
-            continue;
-        }
-    }
-    if (from === "") {
-        wasmx.revert(String.UTF8.encode("move event empty from address"));
-        throw new Error("move event empty from address");
-    }
-    if (to === "") {
-        wasmx.revert(String.UTF8.encode("move event empty to address"));
-        throw new Error("move event empty to address");
-    }
-    if (amount === 0) {
-        return ctx;
-    }
-    // console.log("--move--" + from + "-" + to + "-" + amount.toString());
-    let balanceFrom = getBalance(id, ctx, from);
-    let balanceTo = getBalance(id, ctx, to);
-    balanceFrom -= i64(amount);
-    balanceTo += i64(amount);
-    ctx = setBalance(id, ctx, from, balanceFrom);
-    return setBalance(id, ctx, to, balanceTo);
-}
-
-function approve<
-  TContext extends Map<string,string>,
-  TEvent extends EventObject,
-  TState extends Typestate<TContext>,
->(
-    id: i32,
-    ctx: TContext,
-    params: ActionParam[],
-    event: TEvent,
-): TContext {
-    // console.log("--approve--" + event.type + "--" + event.params.length.toString());
-    // console.log("--approve--" + params.length.toString());
-
-    let spender: string = "";
-    let amount: i64 = 0;
-    for (let i = 0; i < event.params.length; i++) {
-        if (event.params[i].key === "spender") {
-            spender = event.params[i].value;
-            continue;
-        }
-        if (event.params[i].key === "amount") {
-            amount = i64(parseInt(event.params[i].value));
-            continue;
-        }
-    }
-    if (spender === "") {
-        wasmx.revert(String.UTF8.encode("approve event empty address"));
-        throw new Error("approve event empty address");
-    }
-    // console.log("--approve--" + spender + "-" + amount.toString());
-    if (amount === 0) {
-        return ctx;
-    }
-    const owner = wasmxwrap.getCaller();
-    let allowance = getAllowance(id, ctx, owner, spender);
-    allowance += amount;
-    return setAllowance(id, ctx, owner, spender, allowance);
-}
-
-function logTransfer<
-    TContext extends Map<string,string>,
-    TEvent extends EventObject,
-    TState extends Typestate<TContext>,
->(
-    id: i32,
-    ctx: TContext,
-    params: ActionParam[],
-    event: TEvent,
-): TContext {
-    let from: string = "";
-    let to: string = "";
-    let amount: i64 = 0;
-    for (let i = 0; i < event.params.length; i++) {
-        if (event.params[i].key === "from") {
-            from = event.params[i].value;
-            continue;
-        }
-        if (event.params[i].key === "to") {
-            to = event.params[i].value;
-            continue;
-        }
-        if (event.params[i].key === "amount") {
-            amount = i64(parseInt(event.params[i].value));
-            continue;
-        }
-    }
-    if (from === "") {
-        wasmx.revert(String.UTF8.encode("move event empty from address"));
-        throw new Error("move event empty from address");
-    }
-    if (to === "") {
-        wasmx.revert(String.UTF8.encode("move event empty to address"));
-        throw new Error("move event empty to address");
-    }
-    if (amount === 0) {
-        return ctx;
-    }
-    const topic0 = hexToUint8Array(id.toString(16));
-    const topic1 = hexToUint8Array(from);
-    const topic2 = hexToUint8Array(to);
-    const topic3 = hexToUint8Array(amount.toString(16));
-    wasmxwrap.log_fsm(new Uint8Array(0), [topic0, topic1, topic2, topic3]);
-    return ctx;
-}
-
-function increment<
-  TContext extends Map<string,string>,
-  TEvent extends EventObject,
-  TState extends Typestate<TContext>,
->(
-  ctx: TContext,
-  params: ActionParam[],
-): TContext {
-  for (let i = 0; i < params.length; i++) {
-    const value = parseInt(ctx.get(params[i].key), 10) + parseInt(params[i].value, 10);
-    let vstr = value.toString(10);
-    vstr = vstr.substring(0, vstr.length - 2);
-    ctx.set(params[i].key,  vstr);
-  }
-  return ctx;
 }
 
 function log<
@@ -739,12 +456,10 @@ function sendRequest<
       }
   }
   if (address === "") {
-      wasmx.revert(String.UTF8.encode("mint event empty address"));
-      throw new Error("mint event empty address");
+      revert("mint event empty address");
   }
   if (data === "") {
-      wasmx.revert(String.UTF8.encode("mint event empty address"));
-      throw new Error("mint event empty address");
+      revert("mint event empty address");
   }
   wasmxwrap.grpcRequest(address, data);
   return ctx;
@@ -1052,16 +767,18 @@ export class Machine<
     const stateConfig = findStateInfo<TContext,TEvent,TState>(this.config.states, value);
     // console.log("--findStateInfo--END=stateConfig-")
     if (!stateConfig) {
-        wasmx.revert(String.UTF8.encode("state not found: " + value));
-        throw new Error("state not found: " + value);
+        const message = "state not found: " + value;
+        wasmx.revert(String.UTF8.encode(message));
+        throw new Error(message);
     }
     // console.log("----transition-stateConfig-" + stateConfig.on.keys().join(","));
     // console.log("-transition-event--" + eventObject.type);
 
     if (stateConfig.on) {
       if (!stateConfig.on.has(eventObject.type)) {
-        wasmx.revert(String.UTF8.encode("cannot apply event in current state"));
-        throw new Error("cannot apply event in current state")
+        const message = "cannot apply event in current state";
+        wasmx.revert(String.UTF8.encode(message));
+        throw new Error(message);
       }
       const transition = stateConfig.on.get(eventObject.type);
       console.log("* transition next target: " + transition.target)
@@ -1097,15 +814,17 @@ export class Machine<
         const nextStateConfig = findStateInfo<TContext,TEvent,TState>(this.config.states, nextStateValue);
         // console.log("--findStateInfo--END=nextStateConfig-")
         if (!nextStateConfig) {
-            wasmx.revert(String.UTF8.encode("state not found: " + nextStateValue));
-            throw new Error("state not found: " + nextStateValue);
+            const message = "state not found: " + nextStateValue;
+            wasmx.revert(String.UTF8.encode(message));
+            throw new Error(message);
         }
 
         // console.log("----transition-nextStateConfig--" + nextStateConfig.on.keys().join(","))
 
         if (guard && !executeGuard<TContext, TEvent, TState>(this.id, context, guard, event)) {
-            wasmx.revert(String.UTF8.encode("cannot execute transition; guard: " + guard));
-            throw new Error("cannot execute transition; guard: " + guard);
+            const message = "cannot execute transition; guard: " + guard;
+            wasmx.revert(String.UTF8.encode(message));
+            throw new Error(message);
         }
 
         // console.log("----transition-cond--" + cond.toString())
@@ -1131,8 +850,9 @@ export class Machine<
                     // TODO - another way?
                     // console.log("--raise?0-" + act.type);
                     if (act.event === null) {
-                        wasmx.revert(String.UTF8.encode("raise action is missing event"));
-                        throw new Error("raise action is missing event");
+                        const message = "raise action is missing event";
+                        wasmx.revert(String.UTF8.encode(message));
+                        throw new Error(message);
                     }
                     // console.log("--raise?1-" + act.event!.type);
                     // console.log("--raise?11-" + act.event!.params.length.toString());
@@ -1201,8 +921,9 @@ export class Machine<
           const stateConfig = findStateInfo<TContext, TEvent, TState>(this.config.states, resolvedTarget);
           // console.log("--findStateInfo--END=");
           if (!stateConfig) {
-            wasmx.revert(String.UTF8.encode("state not found: " + resolvedTarget));
-            throw new Error("state not found: " + resolvedTarget);
+            const message = "state not found: " + resolvedTarget;
+            wasmx.revert(String.UTF8.encode(message));
+            throw new Error(message);
           }
           // console.log("--findStateInfo--END1=");
           if (stateConfig.states !== null && stateConfig.states.keys().length > 0) {
@@ -1231,8 +952,9 @@ export class Machine<
     const context = state.context;
     const stateConfig = findStateInfo<TContext,TEvent,TState>(this.config.states, value);
     if (!stateConfig) {
-        wasmx.revert(String.UTF8.encode("state not found: " + value));
-        throw new Error("state not found: " + value);
+        const message = "state not found: " + value;
+        wasmx.revert(String.UTF8.encode(message));
+        throw new Error(message);
     }
 
     const transitions: Array<
@@ -1266,8 +988,9 @@ export class Machine<
       const nextStateConfig = findStateInfo<TContext,TEvent,TState>(this.config.states, nextStateValue);
       // console.log("--findStateInfo--END=nextStateConfig-")
       if (!nextStateConfig) {
-          wasmx.revert(String.UTF8.encode("state not found: " + nextStateValue));
-          throw new Error("state not found: " + nextStateValue);
+          const message = "state not found: " + nextStateValue;
+          wasmx.revert(String.UTF8.encode(message));
+          throw new Error(message);
       }
 
       // console.log("----transition-nextStateConfig--" + nextStateConfig.on.keys().join(","))
@@ -1300,8 +1023,9 @@ export class Machine<
                   // TODO - another way?
                   // console.log("--raise?0-" + act.type);
                   if (act.event === null) {
-                      wasmx.revert(String.UTF8.encode("raise action is missing event"));
-                      throw new Error("raise action is missing event");
+                      const message = "raise action is missing event";
+                      wasmx.revert(String.UTF8.encode(message));
+                      throw new Error(message);
                   }
                   // console.log("--raise?1-" + act.event!.type);
                   // console.log("--raise?11-" + act.event!.params.length.toString());
@@ -1371,8 +1095,9 @@ export class Machine<
         const stateConfig = findStateInfo<TContext, TEvent, TState>(this.config.states, resolvedTarget);
         // console.log("--findStateInfo--END=");
         if (!stateConfig) {
-          wasmx.revert(String.UTF8.encode("state not found: " + resolvedTarget));
-          throw new Error("state not found: " + resolvedTarget);
+          const message = "state not found: " + resolvedTarget;
+          wasmx.revert(String.UTF8.encode(message));
+          throw new Error(message);
         }
         // console.log("--findStateInfo--END1=");
         if (stateConfig.states !== null && stateConfig.states.keys().length > 0) {
@@ -1425,7 +1150,6 @@ export function createInternal<
         implementations = new Implementations<ContextGeneral<string>, EventObject>();
     }
   const ctx = new Map<string, string>();
-
   const states = StateInfoClassExternal.toInternalFromArray(fsmConfigExternal.states);
 
   // console.log("----config3-" + fsmConfigExternal.context.length.toString());
@@ -1468,8 +1192,7 @@ export function createInternal<
   // store service context
     const id = wasmxwrap.createService(data);
     if (id !== expectedId) {
-        wasmx.revert(String.UTF8.encode("id does not match expected"));
-        throw new Error("id does not match expected");
+        revert("id does not match expected");
     }
     // store owner
     // console.log("--store owner-- ");
@@ -1482,8 +1205,7 @@ export function getCurrentState(id: i32): ArrayBuffer {
   const service = loadServiceFromId<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>(id);
   // console.log("-getCurrentState-service-loaded-")
   if (!service) {
-    wasmx.revert(String.UTF8.encode("no service"));
-    throw new Error("no service");
+    revert("no service");
   }
   return String.UTF8.encode(service.state.value);
 }
@@ -1496,13 +1218,11 @@ export function getContextValue(id: i32, keyBuf: ArrayBuffer): ArrayBuffer {
 export function getContextValueInternal(id: i32, key: string): ArrayBuffer {
     const service = loadServiceFromId<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>(id);
     if (!service) {
-        wasmx.revert(String.UTF8.encode("no service"));
-        throw new Error("no service");
+        revert("no service");
     }
     const ctx = service.state.context;
     if (!ctx) {
-        wasmx.revert(String.UTF8.encode("no ctx"));
-        throw new Error("no ctx");
+        revert("no ctx");
     }
     // console.log("--getContext--" + ctx.keys().join(","));
     if (ctx.has(key)) {
@@ -1524,8 +1244,7 @@ export function runInternal(id: i32, event: EventClass): ArrayBuffer {
     // console.log("--runInternal--" + id.toString() + "--" + event.type);
     const service = loadServiceFromId<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>(id);
     if (!service) {
-        wasmx.revert(String.UTF8.encode("no service"));
-        throw new Error("no service");
+        revert("no service");
     }
     // console.log("--run--transition--" + event.type);
     service.send(event);
@@ -1620,8 +1339,7 @@ export function findStateInfoByPath<
         state = currentStates.get(currentStateName);
         if (k < (statePath.length - 1)) {
             if (!state.states || state.states.keys().length === 0) {
-                wasmx.revert(String.UTF8.encode("findStateInfoByPath: state does not have childstates: " + statePath.join(".")));
-                throw new Error("findStateInfoByPath: state does not have childstates: " + statePath.join("."));
+                revert("findStateInfoByPath: state does not have childstates: " + statePath.join("."));
             }
             currentStates = state.states;
         }
@@ -1633,8 +1351,7 @@ export function eventual(intervalId: i32, args: TimerArgs): void {
   console.log("* eventual: " + args.serviceId.toString() + "--" + args.delay);
   const service = loadServiceFromId<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>(args.serviceId);
   if (!service) {
-    wasmx.revert(String.UTF8.encode("no service"));
-    throw new Error("no service");
+    revert("no service");
   }
   console.log("* eventual - finding state: " + service.state.value);
 
@@ -1646,8 +1363,7 @@ export function eventual(intervalId: i32, args: TimerArgs): void {
 
   const newstateconfig = findStateInfo<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>(service.machine.config.states, service.state.value);
   if (!newstateconfig) {
-    wasmx.revert(String.UTF8.encode("could not find state config for " + service.state.value));
-    throw new Error("could not find state config for " + service.state.value);
+    return revert("could not find state config for " + service.state.value);
   }
   console.log("* eventual - finding after");
   const afterTimers = newstateconfig.after;
@@ -1660,8 +1376,7 @@ export function eventual(intervalId: i32, args: TimerArgs): void {
   // delay is in milliseconds
   const transition = afterTimers.get(args.delay);
   if (!transition) {
-    wasmx.revert(String.UTF8.encode("delayed transition not found: " + args.delay));
-    throw new Error("delayed transition not found: " + args.delay);
+    revert("delayed transition not found: " + args.delay);
   }
   // just a copied transition
   service.state = service.machine.applyTransition(service.state, transition);

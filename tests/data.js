@@ -451,3 +451,109 @@ export const consensusSMTimerConfigOrig = {
       },
     }
 }
+
+export const RAFTLogReplication = {
+    context: {
+      heartbeatTimeout: 0,
+      log: "",
+      lastApplied: "0",
+      commitIndex: "0",
+      prevLogIndex: "0",
+      matchIndex: "",
+      nextIndex: "",
+      currentTerm: "0",
+      currentNodeId: "0",
+      nodeIPs: "",
+    },
+    id: "RAFT-LogReplication",
+    initial: "uninitialized",
+    states: {
+      uninitialized: {
+        on: {
+          initialize: {
+            target: "Follower",
+          },
+        },
+      },
+      Follower: {
+        on: {
+          change: {
+            target: "Candidate",
+          },
+          receiveHeartbeat: {
+            target: "Follower",
+            actions: [
+              {
+                type: "processAppendEntries",
+              },
+              {
+                type: "sendHeartbeatResponse",
+              },
+            ],
+          },
+        },
+      },
+      Candidate: {
+        on: {
+          change: {
+            target: "Leader",
+          },
+        },
+      },
+      Leader: {
+        entry: [
+          {
+            type: "reeinitialize_nextIndex",
+          },
+          {
+            type: "reeinitialize_matchIndex",
+          },
+        ],
+        initial: "active",
+        states: {
+          active: {
+            after: {
+              heartbeatTimeout: {
+                target: "#RAFT-LogReplication.Leader.active",
+                actions: [
+                  {
+                    type: "sendAppendEntries",
+                  },
+                ],
+                meta: {},
+              },
+            },
+            on: {
+              newTransaction: {
+                target: "active",
+                actions: [
+                  {
+                    type: "appendLog",
+                  },
+                  {
+                    type: "sendNewTransactionResponse",
+                  },
+                ],
+              },
+              heartbeatResponse: {
+                target: "active",
+                actions: [
+                  {
+                    type: "updateNextIndex",
+                  },
+                  {
+                    type: "updateMatchIndex",
+                  },
+                ],
+              },
+            },
+          },
+        },
+        on: {
+          change: {
+            target: "Follower",
+          },
+        },
+      },
+    }
+}

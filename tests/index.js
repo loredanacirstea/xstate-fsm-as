@@ -13,6 +13,7 @@ import {
   consensusSMConfigOrig,
   consensusSMTimerConfigOrig,
   machineConfigSemaphore,
+  RAFTLogReplication,
 } from './data.js';
 
 let currentState, value;
@@ -287,6 +288,34 @@ async function runTests() {
     machineId = JSON.parse(decodeFromUtf8Array(result)).id;
     assert.strictEqual(machineId, 6);
 
+    // RAFTLogReplication
+    machineConfig = parseMachine(RAFTLogReplication);
+    console.log("==RAFTLogReplication==");
+    console.log(JSON.stringify(machineConfig));
+    // Create the machine
+    result = await runFnOwner("create", machineConfig);
+    machineId = JSON.parse(decodeFromUtf8Array(result)).id;
+    assert.strictEqual(machineId, 7);
+
+    await runFnOwner("run", {id: machineId, event: {type: "change", params: []}});
+    await runFnOwner("run", {id: machineId, event: {type: "change", params: []}});
+
+    // Check state is active
+    currentState = await runFn("getCurrentState", {id: machineId});
+    console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
+    assert.strictEqual(decodeFromUtf8Array(currentState), "active");
+
+    const tx = {from: "aa", to: "bb", funds: [], data: "1122", gas: 1000, price: 10}
+    await runFnOwner("run", {id: machineId, event: {type: "newTransaction", params: [{key: "transaction", value: JSON.stringify(tx)}]}});
+
+    currentState = await runFn("getCurrentState", {id: machineId});
+    console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
+    assert.strictEqual(decodeFromUtf8Array(currentState), "active");
+
+    // result = await runFn("getContextValue", {id: machineId, key: "balance_4_" + uint8ArrayToHex(sender)});
+    // console.log("!!!!!getContextValue", decodeFromUtf8Array(result))
+    // currentState = decodeFromUtf8Array(result);
+    // assert.strictEqual(currentState, "20");
 }
 
 runTests();

@@ -772,5 +772,5 @@ export class EventualArgs {
   constructor(intervalId: i32, args: Uint8Array) {
     this.intervalId = intervalId;
     this.args = args;
-}
+  }
 }
