@@ -23,6 +23,7 @@
     }
   },
   "dependencies": {
+    "as-base64": "^0.2.0",
     "json-as": "file:../as-json",
     "visitor-as": "^0.11.4"
   }

@@ -456,10 +456,10 @@ function sendRequest<
       }
   }
   if (address === "") {
-      revert("mint event empty address");
+      revert("sendRequest empty IP address");
   }
   if (data === "") {
-      revert("mint event empty address");
+      revert("sendRequest empty data");
   }
   wasmxwrap.grpcRequest(address, data);
   return ctx;
@@ -776,7 +776,7 @@ export class Machine<
 
     if (stateConfig.on) {
       if (!stateConfig.on.has(eventObject.type)) {
-        const message = "cannot apply event in current state";
+        const message = `cannot apply "${eventObject.type}" event in current "${value}" state`;
         wasmx.revert(String.UTF8.encode(message));
         throw new Error(message);
       }

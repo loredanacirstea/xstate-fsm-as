@@ -1,4 +1,5 @@
 import { JSON } from "json-as/assembly";
+import { encode as encodeBase64, decode as decodeBase64 } from "as-base64/assembly";
 import * as wasmxwrap from './wasmx_wrap';
 import * as wasmx from './wasmx';
 
@@ -79,9 +80,16 @@ TState extends Typestate<TContext>,
     const entries: Array<LogEntry> = [];
     for (let i = nextIndex; i <= lastIndex; i++) {
         const entry = getLogEntry<TContext>(serviceId, ctx, i);
-        entries.push(JSON.parse<LogEntry>(entry));
+        const entryobj = JSON.parse<LogEntry>(entry);
+        entries.push(entryobj);
     }
-    const previousEntry = JSON.parse<LogEntry>(getLogEntry<TContext>(serviceId, ctx, nextIndex-1));
+    const previousEntryStr = getLogEntry<TContext>(serviceId, ctx, nextIndex-1);
+    let previousEntry: LogEntry;
+    if (previousEntryStr != "") {
+        previousEntry = JSON.parse<LogEntry>(previousEntryStr);
+    } else {
+        previousEntry = new LogEntry(0, 0, 0, "");
+    }
     const data = new AppendEntry(
         getTermId<TContext>(ctx),
         getCurrentNodeId<TContext>(ctx),
@@ -91,7 +99,8 @@ TState extends Typestate<TContext>,
         getCommitIndex<TContext>(ctx),
     )
     const datastr = JSON.stringify<AppendEntry>(data);
-    const response = wasmxwrap.grpcRequest(nodeIp, datastr);
+    const dataBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(datastr)))
+    const response = wasmxwrap.grpcRequest(nodeIp, dataBase64);
     const resp = JSON.parse<AppendEntryResponse>(response);
     // TODO something with resp.term
     if (resp.success) {
@@ -174,17 +183,20 @@ export function appendLogInternal<
 >(
     serviceId: i32,
     ctx: TContext,
-    transaction: string,
+    transaction: string, // base64
 ): TContext {
     const index = getLogCount<TContext>(serviceId, ctx) + 1;
     const hash = "";
     const parentHash = "";
-    const transactions: Transaction[] = [JSON.parse<Transaction>(transaction)];
-    const block = new Block(hash, parentHash, transactions);
+    // TODO verify transaction data
+    // const transactionbuf = decode(transaction);
+    // const transactions: Transaction[] = [JSON.parse<Transaction>(String.UTF8.decode(transactionbuf))];
+    const block = new Block(hash, parentHash, [transaction]);
     const blockData = JSON.stringify<Block>(block);
+    const blockDataBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(blockData)))
     const termId = getTermId<TContext>(ctx);
     const leaderId = getCurrentNodeId<TContext>(ctx);
-    const entry = new LogEntry(index, termId, leaderId, blockData);
+    const entry = new LogEntry(index, termId, leaderId, blockDataBase64);
     const entryData = JSON.stringify<LogEntry>(entry);
     setLogCount<TContext>(serviceId, ctx, index);
     setLogEntry<TContext>(serviceId, ctx, index, entryData);

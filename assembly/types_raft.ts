@@ -6,7 +6,7 @@ export class LogEntry {
     index: i64;
     termId: i32;
     leaderId: i32;
-    data: string;
+    data: string; // base64-encoded JSON block data
     constructor(index: i64, termId: i32, leaderId: i32, data: string) {
         this.index = index;
         this.termId = termId;
@@ -17,7 +17,35 @@ export class LogEntry {
 
 // @ts-ignore
 @serializable
+export class LogEntryInternal {
+    index: i64;
+    termId: i32;
+    leaderId: i32;
+    data: Block;
+    constructor(index: i64, termId: i32, leaderId: i32, data: Block) {
+        this.index = index;
+        this.termId = termId;
+        this.leaderId = leaderId;
+        this.data = data;
+    }
+}
+
+// @ts-ignore
+@serializable
 export class Block {
+    hash: string;
+    parentHash: string;
+    transactions: Array<string>; // base64-encoded JSON transaction data
+    constructor(hash: string, parentHash: string, transactions: Array<string>) {
+        this.hash = hash;
+        this.parentHash = parentHash;
+        this.transactions = transactions;
+    }
+}
+
+// @ts-ignore
+@serializable
+export class BlockInternal {
     hash: string;
     parentHash: string;
     transactions: Array<Transaction>;

@@ -19,19 +19,25 @@ import {
 let currentState, value;
 
 function runFnWrapped (storage = {}, env = {}) {
-    return async function (fnName, args) {
-        const argsStr = JSON.stringify({[fnName]: args});
+    return async function (fnName, args, runfn = "main") {
+        let calldata;
+        if (runfn === "main") {
+          calldata = encodeToUtf8Array(JSON.stringify({[fnName]: args}));
+        } else {
+          calldata = args;
+        }
+
         const defaultSender = encodeToUtf8Array("sender");
         env = {
             ...env,
             currentCall: {
                 sender: defaultSender,
                 ...env.currentCall,
-                callData: encodeToUtf8Array(argsStr),
+                callData: calldata,
             }
         }
         const instance = await load(storage, env, LOG.debug);
-        return instance.main();
+        return instance[runfn]();
     }
 }
 
@@ -124,7 +130,7 @@ async function runTests() {
         await runFn("run", {id: machineId, event: {type: "increment", params: []}});
     } catch (e) {
         console.error(e);
-        assert.equal(e.message.includes("cannot apply event in current state"), true);
+        assert.equal(e.message.includes(`cannot apply "increment" event in current "locked" state`), true);
     }
     result = await runFn("getContextValue", {id: machineId, key: "counter"});
     console.log("!!!!!currentState", decodeFromUtf8Array(result))
@@ -306,11 +312,15 @@ async function runTests() {
     assert.strictEqual(decodeFromUtf8Array(currentState), "active");
 
     const tx = {from: "aa", to: "bb", funds: [], data: "1122", gas: 1000, price: 10}
-    await runFnOwner("run", {id: machineId, event: {type: "newTransaction", params: [{key: "transaction", value: JSON.stringify(tx)}]}});
+    const txstr = JSON.stringify(tx);
+    await runFnOwner("run", {id: machineId, event: {type: "newTransaction", params: [{key: "transaction", value: btoa(txstr)}]}});
+
+    const bz = encodeToUtf8Array(JSON.stringify({"delay":"heartbeatTimeout","serviceId":machineId,"state":"active"}))
+    await runFnOwner("eventual", new Uint8Array([0, 0, 0, 0, ...bz]), "eventual");
 
     currentState = await runFn("getCurrentState", {id: machineId});
     console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
-    assert.strictEqual(decodeFromUtf8Array(currentState), "active");
+    assert.strictEqual(decodeFromUtf8Array(currentState), "#RAFT-LogReplication.Leader.active");
 
     // result = await runFn("getContextValue", {id: machineId, key: "balance_4_" + uint8ArrayToHex(sender)});
     // console.log("!!!!!getContextValue", decodeFromUtf8Array(result))
