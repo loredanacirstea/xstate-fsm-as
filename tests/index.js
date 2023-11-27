@@ -302,6 +302,10 @@ async function runTests() {
     result = await runFnOwner("create", machineConfig);
     machineId = JSON.parse(decodeFromUtf8Array(result)).id;
     assert.strictEqual(machineId, 7);
+    let txstr;
+
+    txstr = JSON.stringify({termId: 1, leaderId: 0, prevLogIndex: 2, prevLogTerm: 0, entries: [{index: 2, termId: 1, leaderId: 0, data: ""}]})
+    await runFnOwner("run", {id: machineId, event: {type: "receiveHeartbeat", params: [{key: "entry", value: btoa(txstr)}]}});
 
     await runFnOwner("run", {id: machineId, event: {type: "change", params: []}});
     await runFnOwner("run", {id: machineId, event: {type: "change", params: []}});
@@ -312,7 +316,7 @@ async function runTests() {
     assert.strictEqual(decodeFromUtf8Array(currentState), "active");
 
     const tx = {from: "aa", to: "bb", funds: [], data: "1122", gas: 1000, price: 10}
-    const txstr = JSON.stringify(tx);
+    txstr = JSON.stringify(tx);
     await runFnOwner("run", {id: machineId, event: {type: "newTransaction", params: [{key: "transaction", value: btoa(txstr)}]}});
 
     const bz = encodeToUtf8Array(JSON.stringify({"delay":"heartbeatTimeout","serviceId":machineId,"state":"active"}))

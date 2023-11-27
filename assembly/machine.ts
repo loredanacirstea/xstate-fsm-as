@@ -1357,7 +1357,7 @@ export function eventual(intervalId: i32, args: TimerArgs): void {
 
   if (service.state.value !== args.state) {
     // we are in the wrong state, so the interval must be stopped
-    wasmx.stopInterval(intervalId);
+    // wasmx.stopInterval(intervalId);
     return;
   }
 

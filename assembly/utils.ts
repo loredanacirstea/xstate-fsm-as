@@ -54,3 +54,11 @@ export function revert(message: string): void {
     wasmx.revert(String.UTF8.encode(message));
     throw new Error(message);
 }
+
+export function parseInt32(value: string): i32 {
+    return i32(parseInt(value));
+}
+
+export function parseInt64(value: string): i64 {
+    return i64(parseInt(value));
+}

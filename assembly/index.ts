@@ -26,8 +26,8 @@ import * as data from './data';
 export function wasmx_env_2(): void {}
 
 export function instantiate(): void {
-  const calld = JSON.parse<ConfigExternal<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>>(data.networkState2);
-  createInternal<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>(calld, null);
+  // const calld = JSON.parse<ConfigExternal<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>>(data.networkState2);
+  // createInternal<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>(calld, null);
 }
 
 export function main(): u8[] {

@@ -8,7 +8,7 @@ import {
   Typestate,
   ActionParam,
 } from './types';
-import { hexToUint8Array, revert } from "./utils";
+import { hexToUint8Array, revert, parseInt32, parseInt64 } from "./utils";
 import { Block, LogEntry, Transaction, TransactionResponse, AppendEntry, AppendEntryResponse } from "./types_raft";
 
 export function processAppendEntries<
@@ -21,12 +21,15 @@ TState extends Typestate<TContext>,
     params: ActionParam[],
     event: TEvent,
 ): TContext {
-    // termId
-    // leaderId
-    // prevLogIndex
-    // prevLogTerm
-    // leaderCommit
-    // entries
+    let entryBase64: string = event.params[0].value;
+    console.log("==processAppendEntries==" + entryBase64)
+    const entryStr = String.UTF8.decode(decodeBase64(entryBase64).buffer);
+    console.log("==processAppendEntries=entryStr=" + entryStr)
+    let entry: AppendEntry = JSON.parse<AppendEntry>(entryStr);
+    for (let i = 0; i < entry.entries.length; i++) {
+        appendLogEntry(serviceId, ctx, entry.entries[i]);
+    }
+    // TODO the rest of the verifications
     return ctx
 }
 
@@ -40,6 +43,9 @@ TState extends Typestate<TContext>,
     params: ActionParam[],
     event: TEvent,
 ): TContext {
+    const termId = getTermId<TContext>(ctx);
+    const response = new AppendEntryResponse(termId, true);
+    wasmx.finish(String.UTF8.encode(JSON.stringify<AppendEntryResponse>(response)));
     return ctx;
 }
 
@@ -201,6 +207,19 @@ export function appendLogInternal<
     setLogCount<TContext>(serviceId, ctx, index);
     setLogEntry<TContext>(serviceId, ctx, index, entryData);
     return ctx;
+}
+
+export function appendLogEntry<
+    TContext extends Map<string,string>,
+>(
+    serviceId: i32,
+    ctx: TContext,
+    entry: LogEntry,
+): void {
+    const entryData = JSON.stringify<LogEntry>(entry);
+    const index = getLogCount<TContext>(serviceId, ctx) + 1;
+    setLogCount<TContext>(serviceId, ctx, index);
+    setLogEntry<TContext>(serviceId, ctx, index, entryData);
 }
 
 export function setLogEntry<
