@@ -1,4 +1,5 @@
 import { JSON } from "json-as/assembly";
+import { encode as encodeBase64, decode as decodeBase64 } from "as-base64/assembly";
 import * as wasmxwrap from './wasmx_wrap';
 import * as wasmx from './wasmx';
 
@@ -14,9 +15,9 @@ import {
   StateMachine,
   Typestate,
   HandledActions,
-  Implementations,
   UnsubscribeReturnValue,
   ContextGeneral,
+  ContextGeneralString,
   ActionObject,
   State,
   Config,
@@ -56,89 +57,43 @@ export {
   // ContextFrom,
 };
 
-// @external("env", "process.env.NODE_ENV")
-// declare function nodeEnv(): string
-
-function nodeEnv(): string {
-  return "PRODUCTION";
-}
-
 const INIT_EVENT = new InitEvent();
 const ASSIGN_ACTION: StateMachine.AssignAction = 'xstate.assign';
 const WILDCARD = '*';
 
-// export function assign<TC extends object, TE extends EventObject = EventObject>(
-//   // assignment: StateMachine.Assigner<TC, TE>
-//   assignment: StateMachine.PropertyAssigner<TC, TE>
-// ): StateMachine.AssignActionObject<TC, TE> {
-//   return {
-//     type: ASSIGN_ACTION,
-//     assignment
-//   };
-// }
+export function storeContextParams(params: Array<ContextParam>): void {
+  for (let i = 0; i < params.length; i++) {
+    storeBase64(params[i].key, params[i].value);
+  }
+}
 
-// export function assign2<TC extends object, TE extends EventObject = EventObject>(
-//   assignment: StateMachine.PropertyAssigner<TC, TE>
-// ): StateMachine.AssignActionObject<TC, TE> {
-//   return {
-//     type: ASSIGN_ACTION,
-//     assignment
-//   };
-// }
+export function storeBase64(key: string, value: string): void {
+  const keybuf = decodeBase64(key);
+  const valuebuf = decodeBase64(value);
+  wasmx.storageStore(keybuf, valuebuf);
+}
 
-// function toActionObjectFromString<
-//   TContext extends Map<string,string>,
-//   TEvent extends EventObject
-// >(
-//   action: string,
-//   actionMap: StateMachine.ActionMap<TContext, TEvent>
-// ): StateMachine.ActionObject<TContext, TEvent> {
-//   // TODO fixme
-//   // const actionfn = (actionMap && actionMap.has(action)) ? actionMap.get(action): null;
-//   const actionfn: StateMachine.ActionFunction<TContext, TEvent> | null = null;
-//   return new ActionObject<TContext, TEvent>(action, actionfn, actionMap)
-// }
-
-// function toActionObject<
-//   TContext extends Map<string,string>,
-//   TEvent extends EventObject
-// >(
-//   action: StateMachine.ActionFunction<TContext, TEvent>,
-//   actionMap: StateMachine.ActionMap<TContext, TEvent>
-// ): ActionObject<TContext, TEvent> {
-//   return new ActionObject<TContext, TEvent>(action.name, action, actionMap)
-// }
-
-const IS_PRODUCTION = nodeEnv() === 'production';
-
-function createUnchangedState<
-  TC extends Map<string,string>,
-  TE extends EventObject,
-  TS extends Typestate<TC>
->(value: string, context: TC): StateMachine.State<TC, TE, TS> {
-  return new State<TC, TE, TS>(value, context, [], false);
+function createUnchangedState(value: string, context: ContextGeneralString): StateMachine.State {
+  return new State(value, context, [], false);
   // matches: createMatcher(value)
 }
 
-function handleActions<
-  TContext extends Map<string,string>,
-  TEvent extends EventObject = EventObject
->(
-  actions: Array<StateMachine.ActionObject<TContext, TEvent>>,
-  context: TContext,
-  eventObject: TEvent
-): HandledActions<TContext, TEvent> {
+function handleActions(
+  actions: Array<StateMachine.ActionObject>,
+  context: ContextGeneralString,
+  eventObject: EventObject
+): HandledActions {
   // console.log("--handleActions--ctx-" + context.keys().join(","))
   let nextContext = context;
   let assigned = false;
-  const nonAssignActions: StateMachine.ActionObject<TContext, TEvent>[] = [];
+  const nonAssignActions: StateMachine.ActionObject[] = [];
 
   for (let i = 0; i < actions.length; i++) {
     const action = actions[i];
     console.log("* execute action: " + action.type);
     if (action.type === ASSIGN_ACTION) {
       assigned = true;
-      let tmpContext: TContext = mergeMap<string>(nextContext, new Map());
+      let tmpContext: ContextGeneralString = mergeMap<string>(nextContext, new Map());
       // console.log("--handleActions--tmpContext-" + tmpContext.keys().join(","))
 
       // const aassign = action.assignment;
@@ -175,75 +130,61 @@ function handleActions<
   return new HandledActions(nonAssignActions, nextContext, assigned);
 }
 
-function executeGuard<
-TContext extends Map<string,string>,
-TEvent extends EventObject,
-TState extends Typestate<TContext>,
->(
+function executeGuard(
     id: i32,
-    ctx: TContext,
+    ctx: ContextGeneralString,
     guard: string,
-    event: TEvent,
+    event: EventObject,
 ): boolean {
-    if (guard === "isAdmin") return isAdmin<TContext, TEvent, TState>(id, ctx, []);
-    if (guard === "hasEnoughBalance") return actionsErc20.hasEnoughBalance<TContext, TEvent, TState>(id, ctx, [], event);
-    if (guard === "hasEnoughAllowance") return actionsErc20.hasEnoughAllowance<TContext, TEvent, TState>(id, ctx, [], event);
+    if (guard === "isAdmin") return isAdmin(id, ctx, []);
+    if (guard === "hasEnoughBalance") return actionsErc20.hasEnoughBalance(id, ctx, [], event);
+    if (guard === "hasEnoughAllowance") return actionsErc20.hasEnoughAllowance(id, ctx, [], event);
 
     return true;
 }
 
-function toStateFromString<
-  TContext extends Map<string,string>,
-  TEvent extends EventObject = EventObject,
-  TState extends Typestate<TContext> = Typestate<TContext>
->(state: string, ctx: TContext): StateMachine.State<TContext, TEvent, TState> {
+function toStateFromString(state: string, ctx: ContextGeneralString): StateMachine.State {
   return { value: state, context: ctx };
 }
 
-function _createMachine<
-  TContext extends Map<string,string>,
-  TEvent extends EventObject = EventObject,
-  TState extends Typestate<TContext> = Typestate<TContext>
->(
+function _createMachine(
     id: i32,
-  // fsmConfig: StateMachine.Config<TContext, TEvent, TState>,
-  fsmConfig: Config<TContext, TEvent, TState>,
-  implementations: Implementations<TContext, TEvent>
-): Machine<TContext, TEvent, TState> {
+  fsmConfig: Config,
+): Machine {
   // const entries = fsmConfig.states.get(fsmConfig.initial).entry;
-  const iniactions:  StateMachine.ActionObject<TContext, TEvent>[] = [];
+  const iniactions:  StateMachine.ActionObject[] = [];
   // for (let i = 0; i < entries.length; i++) {
   //   const action = entries[i];
   //   const actionfn = action.actionFn;
   //   if (actionfn !== null) {
   //     iniactions.push(
-  //       toActionObject<TContext, TEvent>(actionfn, implementations.actions)
+  //       toActionObject(actionfn, implementations.actions)
   //     );
   //   }
   // }
   const res = handleActions(
-    // iniactions.map((action: StateMachine.Action<TContext, TEvent>) => {
+    // iniactions.map((action: StateMachine.Action) => {
     //   // return toActionObject(action, implementations.actions)
     //   return toActionObject(action.actionFn, implementations.actions)
     // }
     // ),
     iniactions,
     fsmConfig.context,
-    INIT_EVENT as TEvent
+    INIT_EVENT as EventObject
   );
   const initialActions = res.actions;
   const initialContext = res.ctx;
 
-  // const initialState: StateMachine.State<TContext, TEvent, TState> = {
+  // const initialState: StateMachine.State = {
   //   value: fsmConfig.initial,
   //   actions: initialActions,
   //   context: initialContext,
   //   matches: createMatcher(fsmConfig.initial),
   //   changed: false,
   // }
-  const initialState = new State<TContext, TEvent, TState>(fsmConfig.initial, initialContext, initialActions, false);
+  const initialState = new State(fsmConfig.initial, initialContext, initialActions, false);
 
-  const machine = new Machine<TContext, TEvent, TState>(id, fsmConfig, initialState)
+  const machine = new Machine(id, fsmConfig, initialState)
 
 
   // = {
@@ -259,25 +200,21 @@ function _createMachine<
   return machine;
 }
 
-function executeStateActions<
-  TContext extends Map<string,string>,
-  TEvent extends EventObject,
-  TState extends Typestate<TContext>,
->(
-    service: Service<TContext, TEvent, TState>,
+function executeStateActions(
+    service: Service,
     id: i32,
-    state: StateMachine.State<TContext, TEvent, TState>,
-    event: TEvent
+    state: StateMachine.State,
+    event: EventObject
 ): void {
   console.log("* executeStateActions: ")
   for (let i = 0; i < state.actions.length; i++) {
     const action = state.actions[i];
-    executeStateAction<TContext, TEvent, TState>(service, id, state, event, action);
+    executeStateAction(service, id, state, event, action);
   }
   console.log("* executeStateActions after actions " + state.value)
 
   // timed actions from the new target state
-  const newstateconfig = findStateInfo<TContext,TEvent,TState>(service.machine.config.states, state.value);
+  const newstateconfig = findStateInfo(service.machine.config.states, state.value);
   if (!newstateconfig) {
     return revert("could not find state config for " + state.value);
   }
@@ -314,16 +251,12 @@ function executeStateActions<
   }
 }
 
-function executeStateAction<
-  TContext extends Map<string,string>,
-  TEvent extends EventObject,
-  TState extends Typestate<TContext>,
->(
-    service: Service<TContext, TEvent, TState>,
+function executeStateAction(
+    service: Service,
     id: i32,
-    state: StateMachine.State<TContext, TEvent, TState>,
-    event: TEvent,
-    action:  StateMachine.ActionObject<TContext, TEvent>,
+    state: StateMachine.State,
+    event: EventObject,
+    action:  StateMachine.ActionObject,
 ): void {
     const actionType = action.type;
     console.log("* execute action: " + actionType);
@@ -334,72 +267,72 @@ function executeStateAction<
         if (ev === null) {
             return revert("raise action is missing event");
         }
-        const _event: TEvent = new EventClass(ev.type, ev.params);
+        const _event: EventObject = new EventClass(ev.type, ev.params);
         service.send(_event);
         return;
     }
     if (actionType === "mint") {
-        const newctx = actionsErc20.mint<TContext, TEvent, TState>(id, state.context, action.params, event);
+        const newctx = actionsErc20.mint(id, state.context, action.params, event);
         state.context = newctx;
         return;
     }
     if (actionType === "move") {
-        const newctx = actionsErc20.move<TContext, TEvent, TState>(id, state.context, action.params, event);
+        const newctx = actionsErc20.move(id, state.context, action.params, event);
         state.context = newctx;
         return;
     }
     if (actionType === "approve") {
-        const newctx = actionsErc20.approve<TContext, TEvent, TState>(id, state.context, action.params, event);
+        const newctx = actionsErc20.approve(id, state.context, action.params, event);
         state.context = newctx;
         return;
     }
     if (actionType === "sendRequest") {
-      const newctx = sendRequest<TContext, TEvent, TState>(id, state.context, action.params, event);
+      const newctx = sendRequest(id, state.context, action.params, event);
       state.context = newctx;
       return;
     }
     if (actionType === "logTransfer") {
-        const newctx = actionsErc20.logTransfer<TContext, TEvent, TState>(id, state.context, action.params, event);
+        const newctx = actionsErc20.logTransfer(id, state.context, action.params, event);
         state.context = newctx;
         return;
     }
     if (actionType === "increment") {
-      const newctx = actionsCounter.increment<TContext, TEvent, TState>(state.context, action.params);
+      const newctx = actionsCounter.increment(state.context, action.params);
       state.context = newctx;
       return;
     }
     if (actionType === "log") {
-        const newctx = log<TContext, TEvent, TState>(state.context, action.params);
+        const newctx = log(state.context, action.params);
         state.context = newctx;
         return
     }
     if (actionType === "processAppendEntries") {
-      const newctx = actionsRaft.processAppendEntries<TContext, TEvent, TState>(id, state.context, action.params, event);
+      const newctx = actionsRaft.processAppendEntries(id, state.context, action.params, event);
       state.context = newctx;
       return;
     }
     if (actionType === "sendHeartbeatResponse") {
-      const newctx = actionsRaft.sendHeartbeatResponse<TContext, TEvent, TState>(id, state.context, action.params, event);
+      const newctx = actionsRaft.sendHeartbeatResponse(id, state.context, action.params, event);
       state.context = newctx;
       return;
     }
     if (actionType === "sendAppendEntries") {
-      const newctx = actionsRaft.sendAppendEntries<TContext, TEvent, TState>(id, state.context, action.params, event);
+      const newctx = actionsRaft.sendAppendEntries(id, state.context, action.params, event);
       state.context = newctx;
       return;
     }
     if (actionType === "sendNewTransactionResponse") {
-      const newctx = actionsRaft.sendNewTransactionResponse<TContext, TEvent, TState>(id, state.context, action.params, event);
+      const newctx = actionsRaft.sendNewTransactionResponse(id, state.context, action.params, event);
       state.context = newctx;
       return;
     }
     if (actionType === "appendLog") {
-      const newctx = actionsRaft.appendLog<TContext, TEvent, TState>(id, state.context, action.params, event);
+      const newctx = actionsRaft.appendLog(id, state.context, action.params, event);
       state.context = newctx;
       return;
     }
     // If action is not a local action, then it is an external action
-    const success = processExternalCall<TContext, TEvent, TState>(service, id, state, event, action);
+    const success = processExternalCall(service, id, state, event, action);
     if (!success) {
       return revert("action not recognized: " + actionType);
     }
@@ -409,16 +342,12 @@ function executeStateAction<
     // action.params
 }
 
-function processExternalCall<
-  TContext extends Map<string,string>,
-  TEvent extends EventObject,
-  TState extends Typestate<TContext>,
->(
-    service: Service<TContext, TEvent, TState>,
+function processExternalCall(
+    service: Service,
     id: i32,
-    state: StateMachine.State<TContext, TEvent, TState>,
-    event: TEvent,
-    action:  StateMachine.ActionObject<TContext, TEvent>,
+    state: StateMachine.State,
+    event: EventObject,
+    action:  StateMachine.ActionObject,
 ): boolean {
   const actionType = action.type;
   // expect label.function;
@@ -442,13 +371,9 @@ function processExternalCall<
   return true;
 }
 
-function isAdmin<
-  TContext extends Map<string,string>,
-  TEvent extends EventObject,
-  TState extends Typestate<TContext>,
->(
+function isAdmin(
   id: i32,
-  ctx: TContext,
+  ctx: ContextGeneralString,
   params: ActionParam[],
 ): boolean {
   const caller = wasmxwrap.getCaller();
@@ -456,14 +381,10 @@ function isAdmin<
  return caller === owner;
 }
 
-function log<
-  TContext extends Map<string,string>,
-  TEvent extends EventObject,
-  TState extends Typestate<TContext>,
->(
-  ctx: TContext,
+function log(
+  ctx: ContextGeneralString,
   params: ActionParam[],
-): TContext {
+): ContextGeneralString {
   for (let i = 0; i < params.length; i++) {
     const key = params[i].key;
     const message = params[i].value;
@@ -473,16 +394,12 @@ function log<
   return ctx;
 }
 
-function sendRequest<
-  TContext extends Map<string,string>,
-  TEvent extends EventObject,
-  TState extends Typestate<TContext>,
->(
+function sendRequest(
   id: i32,
-  ctx: TContext,
+  ctx: ContextGeneralString,
   params: ActionParam[],
-  event: TEvent,
-): TContext {
+  event: EventObject,
+): ContextGeneralString {
   let address: string = "";
   let data: string = "";
   for (let i = 0; i < event.params.length; i++) {
@@ -505,37 +422,33 @@ function sendRequest<
   return ctx;
 }
 
-export class Service<
-  TContext extends Map<string,string>,
-  TEvent extends EventObject,
-  TState extends Typestate<TContext>,
-> implements StateMachine.Service<TContext, TEvent, TState> {
+export class Service implements StateMachine.Service {
   id: i32
-  machine: StateMachine.Machine<TContext, TEvent, TState>
-  state: StateMachine.State<TContext, TEvent, TState>
+  machine: StateMachine.Machine
+  state: StateMachine.State
   status: InterpreterStatus
-  listeners: Set<StateMachine.StateListener<StateMachine.State<TContext, TEvent, TState>>>
+  listeners: Set<StateMachine.StateListener>
 
   constructor(
     id: i32,
-    machine: StateMachine.Machine<TContext, TEvent, TState>,
-    state: StateMachine.State<TContext, TEvent, TState> | null,
+    machine: StateMachine.Machine,
+    state: StateMachine.State | null,
     status: InterpreterStatus,
   ) {
     this.id = id;
     this.machine = machine;
     this.state = state || machine.initialState;
     this.status = status || InterpreterStatus.NotStarted;
-    this.listeners = new Set<StateMachine.StateListener<StateMachine.State<TContext, TEvent, TState>>>();
+    this.listeners = new Set<StateMachine.StateListener>();
   }
 
-  send(event: TEvent): void {
+  send(event: EventObject): void {
     console.log("* send event: " + event.type);
     if (this.status !== InterpreterStatus.Running) {
       return;
     }
     this.state = this.machine.transition(this.state, event);
-    executeStateActions<TContext, TEvent, TState>(this, this.id, this.state, event);
+    executeStateActions(this, this.id, this.state, event);
 
     const listeners = this.listeners.values();
     for (let i = 0; i < listeners.length; i++) {
@@ -543,7 +456,7 @@ export class Service<
     }
   }
 
-  subscribe(listener: StateMachine.StateListener<StateMachine.State<TContext, TEvent, TState>>): UnsubscribeReturnValue {
+  subscribe(listener: StateMachine.StateListener): UnsubscribeReturnValue {
     this.listeners.add(listener);
     listener(this.state);
 
@@ -552,14 +465,14 @@ export class Service<
     };
   }
 
-  start(): Service<TContext, TEvent, TState> {
+  start(): Service {
     this.status = InterpreterStatus.Running;
-    executeStateActions<TContext, TEvent, TState>(this, this.id, this.state, INIT_EVENT);
+    executeStateActions(this, this.id, this.state, INIT_EVENT);
     this.send(INIT_EVENT);
     return this;
   }
 
-  stop(): Service<TContext, TEvent, TState> {
+  stop(): Service {
     this.status = InterpreterStatus.Stopped;
     this.listeners.clear();
     return this;
@@ -568,21 +481,17 @@ export class Service<
 
 // @ts-ignore
 @serializable
-export class ServiceExternal<
-  TContext extends Map<string,string>,
-  TEvent extends EventObject,
-  TState extends Typestate<TContext>,
-> {
+export class ServiceExternal {
     id: i32
-  machine: MachineExternal<TContext, TEvent, TState>
-  state: StateClassExternal<TContext, TEvent, TState>
+  machine: MachineExternal
+  state: StateClassExternal
   status: InterpreterStatus
   // TODO listeners can be addresses that should be announced about state changes
 
   constructor(
     id: i32,
-    machine: MachineExternal<TContext, TEvent, TState>,
-    state: StateClassExternal<TContext, TEvent, TState>,
+    machine: MachineExternal,
+    state: StateClassExternal,
     status: InterpreterStatus,
   ) {
     this.id = id;
@@ -591,7 +500,7 @@ export class ServiceExternal<
     this.status = status;
   }
 
-  static fromInternal(service: Service<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>): ServiceExternal<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>> {
+  static fromInternal(service: Service): ServiceExternal {
     const machine = MachineExternal.fromInternal(service.machine);
     const status = service.status;
     const context: Array<ContextParam> = [];
@@ -599,7 +508,7 @@ export class ServiceExternal<
     for (let i = 0; i < ctxKeys.length; i++) {
         context.push(new ContextParam(ctxKeys[i], service.state.context.get(ctxKeys[i])));
     }
-    const stateactions: Array<ActionObject<ContextGeneral<string>,EventObject>> = [];
+    const stateactions: Array<ActionObject> = [];
     for (let i = 0; i < service.state.actions.length; i++) {
         const act = service.state.actions[i];
         const _ev = act.event;
@@ -609,7 +518,7 @@ export class ServiceExternal<
         }
         stateactions.push(new ActionObject(act.type, act.params, ev));
     }
-    const state = new StateClassExternal<ContextGeneral<string>,EventObject, Typestate<ContextGeneral<string>>>(
+    const state = new StateClassExternal(
         service.state.value,
         context,
         stateactions,
@@ -618,20 +527,20 @@ export class ServiceExternal<
     return new ServiceExternal(service.id, machine, state, status);
   }
 
-  toInternal(): Service<TContext, TEvent, TState> {
+  toInternal(): Service {
     // console.log("--service toInternal()--");
     const machine = this.machine.toInternal();
-    const context: TContext = new Map<string, string>();
+    const context: ContextGeneralString = new Map<string, string>();
     for (let i = 0; i < this.state.context.length; i++) {
         const param = this.state.context[i];
         context.set(param.key, param.value);
     }
-    const stateactions: Array<StateMachine.ActionObject<TContext, TEvent>> = [];
+    const stateactions: Array<StateMachine.ActionObject> = [];
     for (let i = 0; i < this.state.actions.length; i++) {
         const act = this.state.actions[i];
-        stateactions.push(new ActionObject<TContext, TEvent>(act.type, act.params, act.event));
+        stateactions.push(new ActionObject(act.type, act.params, act.event));
     }
-    const state = new StateClass<TContext, TEvent, TState>(
+    const state = new StateClass(
         this.state.value,
         context,
         stateactions,
@@ -645,27 +554,23 @@ export class ServiceExternal<
 
 // @ts-ignore
 @serializable
-export class MachineExternal<
-  TContext extends Map<string,string>,
-  TEvent extends EventObject,
-  TState extends Typestate<TContext>
-> {
+export class MachineExternal {
     id: i32;
-  config: ConfigExternal<TContext, TEvent, TState>;
-  initialState: StateClassExternal<TContext, TEvent, TState>;
-//   options: Implementations<TContext, TEvent> // TODO remove
+  config: ConfigExternal;
+  initialState: StateClassExternal;
+//   options: Implementations // TODO remove
 
   constructor(
     id: i32,
-    config: ConfigExternal<TContext, TEvent, TState>,
-    initialState: StateClassExternal<TContext, TEvent, TState>,
+    config: ConfigExternal,
+    initialState: StateClassExternal,
   ) {
     this.id = id;
     this.config = config;
     this.initialState = initialState;
   }
 
-  static fromInternal(machine: StateMachine.Machine<ContextGeneral<string>,EventObject, Typestate<ContextGeneral<string>>>): MachineExternal<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>> {
+  static fromInternal(machine: StateMachine.Machine): MachineExternal {
     const ctx: Array<ContextParam> = [];
     const octx = machine.config.context;
     const octxKeys = octx.keys();
@@ -674,7 +579,7 @@ export class MachineExternal<
     }
     const states = StateInfoClassExternal.fromInternalStatesMap(machine.config.states);
 
-    const config = new ConfigExternal<ContextGeneral<string>,EventObject, Typestate<ContextGeneral<string>>>(
+    const config = new ConfigExternal(
         machine.config.id,
         machine.config.initial,
         ctx,
@@ -685,7 +590,7 @@ export class MachineExternal<
     for (let i = 0; i < ctxKeys.length; i++) {
         context.push(new ContextParam(ctxKeys[i], machine.initialState.context.get(ctxKeys[i])));
     }
-    const iniactions: Array<ActionObject<ContextGeneral<string>,EventObject>> = [];
+    const iniactions: Array<ActionObject> = [];
     for (let i = 0; i < machine.initialState.actions.length; i++) {
         const act = machine.initialState.actions[i];
         const _ev = act.event;
@@ -696,7 +601,7 @@ export class MachineExternal<
         iniactions.push(new ActionObject(act.type, act.params, ev));
     }
 
-    const initialState = new StateClassExternal<ContextGeneral<string>,EventObject, Typestate<ContextGeneral<string>>>(
+    const initialState = new StateClassExternal(
         machine.initialState.value,
         context,
         iniactions,
@@ -704,55 +609,51 @@ export class MachineExternal<
     );
 
     // machine.initialState;
-    return new MachineExternal<ContextGeneral<string>,EventObject, Typestate<ContextGeneral<string>>>(machine.id, config, initialState);
+    return new MachineExternal(machine.id, config, initialState);
   }
 
-  toInternal(): Machine<TContext, TEvent, TState> {
+  toInternal(): Machine {
     // console.log("-Machine toInternal--")
-    const context: TContext = new Map<string,string>();
+    const context: ContextGeneralString = new Map<string,string>();
     const ctxpairs = this.config.context;
     for (let i = 0; i < ctxpairs.length; i++) {
         context.set(ctxpairs[i].key, ctxpairs[i].value);
     }
     const states = StateInfoClassExternal.toInternalFromArray(this.config.states);
-    const config = new Config<TContext, TEvent, TState>(
+    const config = new Config(
         this.config.id,
         this.config.initial,
         context,
         states,
     )
-    const inictx: TContext = new Map<string,string>();
+    const inictx: ContextGeneralString = new Map<string,string>();
     const _inictx = this.initialState.context;
     for (let i = 0; i < _inictx.length; i++) {
         inictx.set(_inictx[i].key, _inictx[i].value);
     }
-    const iniactions: Array<StateMachine.ActionObject<TContext, TEvent>> = [];
+    const iniactions: Array<StateMachine.ActionObject> = [];
     for (let i = 0; i < this.initialState.actions.length; i++) {
         const act = this.initialState.actions[i];
-        iniactions.push(new ActionObject<TContext, TEvent>(act.type, act.params, act.event));
+        iniactions.push(new ActionObject(act.type, act.params, act.event));
     }
-    const initialState = new StateClass<TContext, TEvent, TState>(
+    const initialState = new StateClass(
         this.initialState.value,
         inictx,
         iniactions,
         this.initialState.changed,
     );
     // console.log("-Machine toInternal-END-")
-    return new Machine<TContext, TEvent, TState>(this.id, config, initialState);
+    return new Machine(this.id, config, initialState);
   }
 }
 
 // Define a Map for services
-class ServiceMap<
-  TContext extends Map<string,string>,
-  TEvent extends EventObject,
-  TState extends Typestate<TContext>,
-> {
+class ServiceMap {
   counter: i32 = 0;
   private _keys: i32[] = [];
-  private _values: Service<TContext, TEvent, TState>[] = [];
+  private _values: Service[] = [];
 
-  set(value: Service<TContext, TEvent, TState>): i32 {
+  set(value: Service): i32 {
     const key = this.counter;
     this.counter += 1;
     const index = this._keys.indexOf(key);
@@ -765,7 +666,7 @@ class ServiceMap<
     return key;
   }
 
-  get(key: i32): Service<TContext, TEvent, TState> | null {
+  get(key: i32): Service | null {
     const index = this._keys.indexOf(key);
     if (index > -1) {
       return this._values[index];
@@ -774,37 +675,31 @@ class ServiceMap<
   }
 }
 
-export class Machine<
-  TContext extends Map<string,string>,
-  TEvent extends EventObject,
-  TState extends Typestate<TContext>
-> implements StateMachine.Machine<TContext, TEvent, TState> {
+export class Machine implements StateMachine.Machine {
     id: i32;
-  config: StateMachine.Config<TContext, TEvent, TState>;
-  initialState: StateMachine.State<TContext, TEvent, TState>;
-  options: Implementations<TContext, TEvent>
+  config: StateMachine.Config;
+  initialState: StateMachine.State;
 
   constructor(
     id: i32,
-    config: StateMachine.Config<TContext, TEvent, TState>,
-    initialState: StateMachine.State<TContext, TEvent, TState>,
+    config: StateMachine.Config,
+    initialState: StateMachine.State,
   ) {
     this.id = id;
     this.config = config;
     this.initialState = initialState;
-    this.options = new Implementations();
   }
 
   transition(
-    state: StateMachine.State<TContext, TEvent, TState>,
-    event: TEvent
-  ): StateMachine.State<TContext, TEvent, TState> {
+    state: StateMachine.State,
+    event: EventObject
+  ): StateMachine.State {
     const value = state.value;
     const context = state.context;
     const eventObject = event;
     // console.log("----transition-config.states-" + this.config.states.keys().join(","));
     // const stateConfig = this.config.states.get(value);
-    const stateConfig = findStateInfo<TContext,TEvent,TState>(this.config.states, value);
+    const stateConfig = findStateInfo(this.config.states, value);
     // console.log("--findStateInfo--END=stateConfig-")
     if (!stateConfig) {
         const message = "state not found: " + value;
@@ -823,9 +718,7 @@ export class Machine<
       const transition = stateConfig.on.get(eventObject.type);
       console.log("* transition next target: " + transition.target)
 
-      const transitions: Array<
-        StateMachine.Transition<TContext, TEvent, string>
-      > = [transition];
+      const transitions: Array<StateMachine.Transition> = [transition];
 
       if (stateConfig.on.has(WILDCARD)) {
         const _trans = stateConfig.on.get(WILDCARD);
@@ -838,7 +731,7 @@ export class Machine<
       for (let i = 0; i < transitions.length; i++) {
         const transition = transitions[i];
         if (transition === null) {
-          return createUnchangedState<TContext, TEvent, TState>(value, context);
+          return createUnchangedState(value, context);
         }
         const target = transition.target;
         const actions = transition.actions || [];
@@ -851,7 +744,7 @@ export class Machine<
         // console.log("----transition-nextStateValue--" + nextStateValue)
         // const nextStateConfig = this.config.states.get(nextStateValue);
 
-        const nextStateConfig = findStateInfo<TContext,TEvent,TState>(this.config.states, nextStateValue);
+        const nextStateConfig = findStateInfo(this.config.states, nextStateValue);
         // console.log("--findStateInfo--END=nextStateConfig-")
         if (!nextStateConfig) {
             const message = "state not found: " + nextStateValue;
@@ -861,7 +754,7 @@ export class Machine<
 
         // console.log("----transition-nextStateConfig--" + nextStateConfig.on.keys().join(","))
 
-        if (guard && !executeGuard<TContext, TEvent, TState>(this.id, context, guard, event)) {
+        if (guard && !executeGuard(this.id, context, guard, event)) {
             const message = "cannot execute transition; guard: " + guard;
             wasmx.revert(String.UTF8.encode(message));
             throw new Error(message);
@@ -869,7 +762,7 @@ export class Machine<
 
         // console.log("----transition-cond--" + cond.toString())
         if (cond(context, eventObject)) {
-          // const allActions: StateMachine.Action<TContext, TEvent>[] = (
+          // const allActions: StateMachine.Action[] = (
           //   isTargetless
           //     ? actions
           //     : stateConfig.exit
@@ -877,7 +770,7 @@ export class Machine<
           //         .concat(nextStateConfig.entry)
           //         // .filter((a) => a)
           // )
-          let allActions: StateMachine.ActionObject<TContext, TEvent>[] = [];
+          let allActions: StateMachine.ActionObject[] = [];
           if (!isTargetless) {
             // for (let i = 0; i < stateConfig.exit.length; i++) {
             //   allActions.push(stateConfig.exit[i]);
@@ -931,16 +824,16 @@ export class Machine<
             // allActions = allActions.concat(nextStateConfig.entry);
           }
 
-          // const allActionObjects: StateMachine.ActionObject<TContext, TEvent>[] = [];
+          // const allActionObjects: StateMachine.ActionObject[] = [];
 
           // for (let i = 0; i < allActions.length; i++) {
           //   const action = allActions[i];
           //   const actionFn = action.actionFn;
           //   if (actionFn) {
-          //     const obj = toActionObject<TContext, TEvent>(actionFn, this.options.actions);
+          //     const obj = toActionObject(actionFn, this.options.actions);
           //     allActionObjects.push(obj);
           //   }
-          //   const obj = toActionObjectFromString<TContext, TEvent>(action.value, this.options.actions);
+          //   const obj = toActionObjectFromString(action.value, this.options.actions);
           //   allActionObjects.push(obj);
           // }
 
@@ -958,7 +851,7 @@ export class Machine<
           // console.log("--transition--resolvedTarget-" + resolvedTarget)
 
           // child states! we choose the first one
-          const stateConfig = findStateInfo<TContext, TEvent, TState>(this.config.states, resolvedTarget);
+          const stateConfig = findStateInfo(this.config.states, resolvedTarget);
           // console.log("--findStateInfo--END=");
           if (!stateConfig) {
             const message = "state not found: " + resolvedTarget;
@@ -973,33 +866,31 @@ export class Machine<
 
           console.log("* transition next target: " + resolvedTarget);
 
-          return new State<TContext, TEvent, TState>(resolvedTarget, nextContext, nonAssignActions, target !== value || nonAssignActions.length > 0 || assigned);
+          return new State(resolvedTarget, nextContext, nonAssignActions, target !== value || nonAssignActions.length > 0 || assigned);
           // matches: createMatcher(resolvedTarget)
         }
       }
     }
 
     // No transitions match
-    return createUnchangedState<TContext, TEvent, TState>(value, context);
+    return createUnchangedState(value, context);
   }
 
   applyTransition(
-    state: StateMachine.State<TContext, TEvent, TState>,
-    transition: StateMachine.Transition<TContext, TEvent, string>
-  ): StateMachine.State<TContext, TEvent, TState> {
+    state: StateMachine.State,
+    transition: StateMachine.Transition
+  ): StateMachine.State {
     console.log("* applyTransition: " + transition.target);
     const value = state.value;
     const context = state.context;
-    const stateConfig = findStateInfo<TContext,TEvent,TState>(this.config.states, value);
+    const stateConfig = findStateInfo(this.config.states, value);
     if (!stateConfig) {
         const message = "state not found: " + value;
         wasmx.revert(String.UTF8.encode(message));
         throw new Error(message);
     }
 
-    const transitions: Array<
-      StateMachine.Transition<TContext, TEvent, string>
-    > = [transition];
+    const transitions: Array<StateMachine.Transition> = [transition];
 
     if (stateConfig.on.has(WILDCARD)) {
       const _trans = stateConfig.on.get(WILDCARD);
@@ -1012,7 +903,7 @@ export class Machine<
     for (let i = 0; i < transitions.length; i++) {
       const transition = transitions[i];
       if (transition === null) {
-        return createUnchangedState<TContext, TEvent, TState>(value, context);
+        return createUnchangedState(value, context);
       }
       const target = transition.target;
       const actions = transition.actions || [];
@@ -1025,7 +916,7 @@ export class Machine<
       // console.log("----transition-nextStateValue--" + nextStateValue)
       // const nextStateConfig = this.config.states.get(nextStateValue);
 
-      const nextStateConfig = findStateInfo<TContext,TEvent,TState>(this.config.states, nextStateValue);
+      const nextStateConfig = findStateInfo(this.config.states, nextStateValue);
       // console.log("--findStateInfo--END=nextStateConfig-")
       if (!nextStateConfig) {
           const message = "state not found: " + nextStateValue;
@@ -1035,14 +926,14 @@ export class Machine<
 
       // console.log("----transition-nextStateConfig--" + nextStateConfig.on.keys().join(","))
 
-      // if (guard && !executeGuard<TContext, TEvent, TState>(this.id, context, guard, event)) {
+      // if (guard && !executeGuard(this.id, context, guard, event)) {
       //     wasmx.revert(String.UTF8.encode("cannot execute transition; guard: " + guard));
       //     throw new Error("cannot execute transition; guard: " + guard);
       // }
 
       // console.log("----transition-cond--" + cond.toString())
       if (true) {
-        // const allActions: StateMachine.Action<TContext, TEvent>[] = (
+        // const allActions: StateMachine.Action[] = (
         //   isTargetless
         //     ? actions
         //     : stateConfig.exit
@@ -1050,7 +941,7 @@ export class Machine<
         //         .concat(nextStateConfig.entry)
         //         // .filter((a) => a)
         // )
-        let allActions: StateMachine.ActionObject<TContext, TEvent>[] = [];
+        let allActions: StateMachine.ActionObject[] = [];
         if (!isTargetless) {
           // for (let i = 0; i < stateConfig.exit.length; i++) {
           //   allActions.push(stateConfig.exit[i]);
@@ -1104,16 +995,16 @@ export class Machine<
           // allActions = allActions.concat(nextStateConfig.entry);
         }
 
-        // const allActionObjects: StateMachine.ActionObject<TContext, TEvent>[] = [];
+        // const allActionObjects: StateMachine.ActionObject[] = [];
 
         // for (let i = 0; i < allActions.length; i++) {
         //   const action = allActions[i];
         //   const actionFn = action.actionFn;
         //   if (actionFn) {
-        //     const obj = toActionObject<TContext, TEvent>(actionFn, this.options.actions);
+        //     const obj = toActionObject(actionFn, this.options.actions);
         //     allActionObjects.push(obj);
         //   }
-        //   const obj = toActionObjectFromString<TContext, TEvent>(action.value, this.options.actions);
+        //   const obj = toActionObjectFromString(action.value, this.options.actions);
         //   allActionObjects.push(obj);
         // }
 
@@ -1132,7 +1023,7 @@ export class Machine<
         // console.log("--transition--resolvedTarget-" + resolvedTarget)
 
         // child states! we choose the first one
-        const stateConfig = findStateInfo<TContext, TEvent, TState>(this.config.states, resolvedTarget);
+        const stateConfig = findStateInfo(this.config.states, resolvedTarget);
         // console.log("--findStateInfo--END=");
         if (!stateConfig) {
           const message = "state not found: " + resolvedTarget;
@@ -1147,17 +1038,17 @@ export class Machine<
 
         console.log("* transition next target: " + resolvedTarget);
 
-        return new State<TContext, TEvent, TState>(resolvedTarget, nextContext, nonAssignActions, target !== value || nonAssignActions.length > 0 || assigned);
+        return new State(resolvedTarget, nextContext, nonAssignActions, target !== value || nonAssignActions.length > 0 || assigned);
         // matches: createMatcher(resolvedTarget)
       }
     }
 
     // No transitions match
-    return createUnchangedState<TContext, TEvent, TState>(value, context);
+    return createUnchangedState(value, context);
   }
 }
 
-const map = new ServiceMap<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>();
+const map = new ServiceMap();
 
 export function create(
   _fsmConfig: ArrayBuffer,
@@ -1166,29 +1057,21 @@ export function create(
   const fsmConfigStr = String.UTF8.decode(_fsmConfig);
   console.log("===create===" + fsmConfigStr);
 
-  const fsmConfigExternal = JSON.parse<ConfigExternal<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>>(fsmConfigStr);
+  const fsmConfigExternal = JSON.parse<ConfigExternal>(fsmConfigStr);
 
-  let implementations = new Implementations<ContextGeneral<string>, EventObject>();
+  // let implementations = new Implementations<ContextGeneral<string>, EventObject>();
   // if (_implementations.byteLength > 0) {
   //   const implementationsStr = String.UTF8.decode(_implementations);
   //   console.log(implementationsStr);
   //   implementations = JSON.parse<Implementations<ContextGeneral<string>, EventObject>>(implementationsStr);
   // }
 
-  return createInternal(fsmConfigExternal, implementations)
+  return createInternal(fsmConfigExternal)
 }
 
-export function createInternal<
-    TContext extends Map<string,string>,
-    TEvent extends EventObject,
-    TState extends Typestate<TContext>
->(
-    fsmConfigExternal: ConfigExternal<TContext, TEvent, TState>,
-    implementations: Implementations<TContext, TEvent> | null,
+export function createInternal(
+    fsmConfigExternal: ConfigExternal,
 ): ArrayBuffer {
-    if (!implementations) {
-        implementations = new Implementations<ContextGeneral<string>, EventObject>();
-    }
   const ctx = new Map<string, string>();
   const states = StateInfoClassExternal.toInternalFromArray(fsmConfigExternal.states);
 
@@ -1199,24 +1082,24 @@ export function createInternal<
     ctx.set(param.key, param.value);
   }
 
-  const fsmConfig = new Config<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>(
+  const fsmConfig = new Config(
     fsmConfigExternal.id,
     fsmConfigExternal.initial,
     ctx,
     states,
   )
 
-  // const fsmConfig = JSON.parse<StateMachine.Config<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>>(fsmConfigStr);
+  // const fsmConfig = JSON.parse<StateMachine.Config>(fsmConfigStr);
 
   // let implementations: Implementations<ContextGeneral<string>, EventObject> = {actions: new ActionMap()};
   // let implementations: Implementations<ContextGeneral<string>, EventObject> = {actions: new Map<string, string>()};
 
   const expectedId = wasmxwrap.loadCounter();
-  const machine = _createMachine<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>(expectedId, fsmConfig, implementations);
+  const machine = _createMachine(expectedId, fsmConfig);
 
   // console.log("--_createMachine--end--")
 
-  const service = new Service<ContextGeneral<string>, EventObject, Typestate<ContextGeneral<string>>>(expectedId, machine, null , InterpreterStatus.NotStarted);
+  const service = new Service(expectedId, machine, null , InterpreterStatus.NotStarted);
 
     // console.log("--service.start--start--")
 
@@ -1225,7 +1108,7 @@ export function createInternal<
 
     const serviceJson = ServiceExternal.fromInternal(service);
     // console.log("--service external--");
-    const data = JSON.stringify<ServiceExternal<TContext, TEvent, TState>>(serviceJson);
+    const data = JSON.stringify<ServiceExternal>(serviceJson);
 
     // console.log("--_createMachine--data-- " + data);
 
@@ -1242,7 +1125,7 @@ export function createInternal<
 }
 
 export function getCurrentState(id: i32): ArrayBuffer {
-  const service = loadServiceFromId<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>(id);
+  const service = loadServiceFromId(id);
   // console.log("-getCurrentState-service-loaded-")
   if (!service) {
     revert("no service");
@@ -1256,7 +1139,7 @@ export function getContextValue(id: i32, keyBuf: ArrayBuffer): ArrayBuffer {
 }
 
 export function getContextValueInternal(id: i32, key: string): ArrayBuffer {
-    const service = loadServiceFromId<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>(id);
+    const service = loadServiceFromId(id);
     if (!service) {
         revert("no service");
     }
@@ -1282,7 +1165,7 @@ export function run(
 
 export function runInternal(id: i32, event: EventClass): ArrayBuffer {
     // console.log("--runInternal--" + id.toString() + "--" + event.type);
-    const service = loadServiceFromId<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>(id);
+    const service = loadServiceFromId(id);
     if (!service) {
         revert("no service");
     }
@@ -1313,40 +1196,28 @@ function mergeMap<T>(original: Map<string,T>, additional: Map<string,T>): Map<st
   return result;
 }
 
-export function saveService<
-    TContext extends Map<string,string>,
-    TEvent extends EventObject,
-    TState extends Typestate<TContext>,
-> (id: i32, service: Service<TContext, TEvent, TState>): void {
+export function saveService(id: i32, service: Service): void {
     const serviceJson = ServiceExternal.fromInternal(service);
-    const data = JSON.stringify<ServiceExternal<TContext, TEvent, TState>>(serviceJson);
+    const data = JSON.stringify<ServiceExternal>(serviceJson);
     wasmxwrap.storeService(id, data);
 }
 
-export function loadServiceFromId<
-    TContext extends Map<string,string>,
-    TEvent extends EventObject,
-    TState extends Typestate<TContext>,
-> (id: i32): Service<TContext, TEvent, TState> {
+export function loadServiceFromId(id: i32): Service {
     const serviceData = wasmxwrap.loadService(id);
-    const service = JSON.parse<ServiceExternal<TContext, TEvent, TState>>(serviceData);
+    const service = JSON.parse<ServiceExternal>(serviceData);
     return service.toInternal();
 }
 
 // TODO: nested state names as paths unlocked.active.
-export function findStateInfo<
-    TContext extends Map<string,string>,
-    TEvent extends EventObject,
-    TState extends Typestate<TContext>,
->(
-    states: States<TContext, TEvent>,
+export function findStateInfo(
+    states: States,
     stateName: string,
-): StateInfo<TContext, TEvent> | null {
+): StateInfo | null {
     if (stateName.at(0) === "#") {
         // "#ERC20.unlocked.active"
         // TODO support multiple machines
         const statePath = stateName.substring(1).split(".").slice(1)
-        return findStateInfoByPath<TContext, TEvent, TState>(states, statePath)
+        return findStateInfoByPath(states, statePath)
     }
     // TODO here, we should only look in the current state, not the machine states
     const keys = states.keys();
@@ -1356,23 +1227,19 @@ export function findStateInfo<
         const stateinfo = states.get(keys[i]);
         if (keys[i] === stateName) return stateinfo;
         if (stateinfo.states && stateinfo.states.keys().length > 0) {
-            const info = findStateInfo<TContext, TEvent, TState>(stateinfo.states, stateName);
+            const info = findStateInfo(stateinfo.states, stateName);
             if (info !== null) return info;
         }
     }
     return null;
 }
 
-export function findStateInfoByPath<
-    TContext extends Map<string,string>,
-    TEvent extends EventObject,
-    TState extends Typestate<TContext>,
->(
-    states: States<TContext, TEvent>,
+export function findStateInfoByPath(
+    states: States,
     statePath: string[],
-): StateInfo<TContext, TEvent> | null {
+): StateInfo | null {
     let currentStates = states;
-    let state: StateInfo<TContext, TEvent> | null = null;
+    let state: StateInfo | null = null;
     // console.log("--findStateInfoByPath--" + statePath.join("."));
     for (let k = 0; k < statePath.length; k++) {
         const currentStateName = statePath[k];
@@ -1389,7 +1256,7 @@ export function findStateInfoByPath<
 
 export function eventual(intervalId: i32, args: TimerArgs): void {
   console.log("* eventual: " + args.serviceId.toString() + "--" + args.delay);
-  const service = loadServiceFromId<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>(args.serviceId);
+  const service = loadServiceFromId(args.serviceId);
   if (!service) {
     revert("no service");
   }
@@ -1401,7 +1268,7 @@ export function eventual(intervalId: i32, args: TimerArgs): void {
     return;
   }
 
-  const newstateconfig = findStateInfo<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>(service.machine.config.states, service.state.value);
+  const newstateconfig = findStateInfo(service.machine.config.states, service.state.value);
   if (!newstateconfig) {
     return revert("could not find state config for " + service.state.value);
   }
@@ -1420,7 +1287,7 @@ export function eventual(intervalId: i32, args: TimerArgs): void {
   }
   // just a copied transition
   service.state = service.machine.applyTransition(service.state, transition);
-  executeStateActions<ContextGeneral<string>,EventObject,Typestate<ContextGeneral<string>>>(service, service.id, service.state, new EventClass("", []));
+  executeStateActions(service, service.id, service.state, new EventClass("", []));
   // TODO listeners?
 
   saveService(args.serviceId, service);

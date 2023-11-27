@@ -7,20 +7,17 @@ import {
   EventObject,
   Typestate,
   ActionParam,
+  ContextGeneralString,
 } from './types';
 import { hexToUint8Array, revert, parseInt32, parseInt64 } from "./utils";
 import { Block, LogEntry, Transaction, TransactionResponse, AppendEntry, AppendEntryResponse } from "./types_raft";
 
-export function processAppendEntries<
-TContext extends Map<string,string>,
-TEvent extends EventObject,
-TState extends Typestate<TContext>,
->(
+export function processAppendEntries(
     serviceId: i32,
-    ctx: TContext,
+    ctx: ContextGeneralString,
     params: ActionParam[],
-    event: TEvent,
-): TContext {
+    event: EventObject,
+): ContextGeneralString {
     let entryBase64: string = event.params[0].value;
     console.log("==processAppendEntries==" + entryBase64)
     const entryStr = String.UTF8.decode(decodeBase64(entryBase64).buffer);
@@ -33,63 +30,51 @@ TState extends Typestate<TContext>,
     return ctx
 }
 
-export function sendHeartbeatResponse<
-TContext extends Map<string,string>,
-TEvent extends EventObject,
-TState extends Typestate<TContext>,
->(
+export function sendHeartbeatResponse(
     serviceId: i32,
-    ctx: TContext,
+    ctx: ContextGeneralString,
     params: ActionParam[],
-    event: TEvent,
-): TContext {
-    const termId = getTermId<TContext>(ctx);
+    event: EventObject,
+): ContextGeneralString {
+    const termId = getTermId(ctx);
     const response = new AppendEntryResponse(termId, true);
     wasmx.finish(String.UTF8.encode(JSON.stringify<AppendEntryResponse>(response)));
     return ctx;
 }
 
-export function sendAppendEntries<
-TContext extends Map<string,string>,
-TEvent extends EventObject,
-TState extends Typestate<TContext>,
->(
+export function sendAppendEntries(
     serviceId: i32,
-    ctx: TContext,
+    ctx: ContextGeneralString,
     params: ActionParam[],
-    event: TEvent,
-): TContext {
+    event: EventObject,
+): ContextGeneralString {
     // go through each node
-    const nodeId = getCurrentNodeId<TContext>(ctx);
-    const ips = getNodeIPs<TContext>(ctx);
+    const nodeId = getCurrentNodeId(ctx);
+    const ips = getNodeIPs(ctx);
     for (let i = 0; i < ips.length; i++) {
         if (nodeId === i) continue;
-        sendAppendEntry<TContext, TEvent, TState>(serviceId, ctx, i, ips[i]);
+        sendAppendEntry(serviceId, ctx, i, ips[i]);
     }
     return ctx;
 }
 
 // TODO continue sending the entries until all nodes receive them
-export function sendAppendEntry<
-TContext extends Map<string,string>,
-TEvent extends EventObject,
-TState extends Typestate<TContext>,
->(
+export function sendAppendEntry(
     serviceId: i32,
-    ctx: TContext,
+    ctx: ContextGeneralString,
     nodeId: i32,
     nodeIp: string,
 ): void {
-    const nextIndexPerNode = getNextIndexArray<TContext>(ctx);
+    const nextIndexPerNode = getNextIndexArray(ctx);
     const nextIndex = nextIndexPerNode.at(nodeId);
-    const lastIndex = getLogCount<TContext>(serviceId, ctx);
+    const lastIndex = getLogCount(serviceId, ctx);
     const entries: Array<LogEntry> = [];
     for (let i = nextIndex; i <= lastIndex; i++) {
-        const entry = getLogEntry<TContext>(serviceId, ctx, i);
+        const entry = getLogEntry(serviceId, ctx, i);
         const entryobj = JSON.parse<LogEntry>(entry);
         entries.push(entryobj);
     }
-    const previousEntryStr = getLogEntry<TContext>(serviceId, ctx, nextIndex-1);
+    const previousEntryStr = getLogEntry(serviceId, ctx, nextIndex-1);
     let previousEntry: LogEntry;
     if (previousEntryStr != "") {
         previousEntry = JSON.parse<LogEntry>(previousEntryStr);
@@ -97,12 +82,12 @@ TState extends Typestate<TContext>,
         previousEntry = new LogEntry(0, 0, 0, "");
     }
     const data = new AppendEntry(
-        getTermId<TContext>(ctx),
-        getCurrentNodeId<TContext>(ctx),
+        getTermId(ctx),
+        getCurrentNodeId(ctx),
         nextIndex - 1,
         previousEntry.termId,
         entries,
-        getCommitIndex<TContext>(ctx),
+        getCommitIndex(ctx),
     )
     const datastr = JSON.stringify<AppendEntry>(data);
     const dataBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(datastr)))
@@ -111,22 +96,18 @@ TState extends Typestate<TContext>,
     // TODO something with resp.term
     if (resp.success) {
         nextIndexPerNode[nodeId] = lastIndex;
-        setNextIndexArray<TContext>(ctx, nextIndexPerNode);
+        setNextIndexArray(ctx, nextIndexPerNode);
     }
 }
 
-export function sendNewTransactionResponse<
-TContext extends Map<string,string>,
-TEvent extends EventObject,
-TState extends Typestate<TContext>,
->(
+export function sendNewTransactionResponse(
     serviceId: i32,
-    ctx: TContext,
+    ctx: ContextGeneralString,
     params: ActionParam[],
-    event: TEvent,
-): TContext {
+    event: EventObject,
+): ContextGeneralString {
     // we expect that an entry has been added
-    const entry = getLastLog<TContext>(serviceId, ctx);
+    const entry = getLastLog(serviceId, ctx);
     const response = new TransactionResponse(
         entry.termId,
         entry.leaderId,
@@ -136,16 +117,12 @@ TState extends Typestate<TContext>,
     return ctx;
 }
 
-export function appendLog<
-    TContext extends Map<string,string>,
-    TEvent extends EventObject,
-    TState extends Typestate<TContext>,
->(
+export function appendLog(
     serviceId: i32,
-    ctx: TContext,
+    ctx: ContextGeneralString,
     params: ActionParam[],
-    event: TEvent,
-): TContext {
+    event: EventObject,
+): ContextGeneralString {
     let transaction: string = "";
     for (let i = 0; i < event.params.length; i++) {
         if (event.params[i].key === "transaction") {
@@ -156,25 +133,21 @@ export function appendLog<
     if (transaction === "") {
         revert("no transaction found");
     }
-    return appendLogInternal<TContext>(serviceId, ctx, transaction)
+    return appendLogInternal(serviceId, ctx, transaction)
 }
 
-function getLastLog<
-    TContext extends Map<string,string>,
->(
+function getLastLog(
     serviceId: i32,
-    ctx: TContext,
+    ctx: ContextGeneralString,
 ): LogEntry {
-    const index = getLogCount<TContext>(serviceId, ctx);
-    const entry = getLogEntry<TContext>(serviceId, ctx, index);
+    const index = getLogCount(serviceId, ctx);
+    const entry = getLogEntry(serviceId, ctx, index);
     return JSON.parse<LogEntry>(entry);
 }
 
-export function getLogEntry<
-    TContext extends Map<string,string>,
->(
+export function getLogEntry(
     serviceId: i32,
-    ctx: TContext,
+    ctx: ContextGeneralString,
     index: i64,
 ): string {
     const key = getLogEntryKey(serviceId, index);
@@ -184,14 +157,12 @@ export function getLogEntry<
     return "";
 }
 
-export function appendLogInternal<
-    TContext extends Map<string,string>,
->(
+export function appendLogInternal(
     serviceId: i32,
-    ctx: TContext,
+    ctx: ContextGeneralString,
     transaction: string, // base64
-): TContext {
-    const index = getLogCount<TContext>(serviceId, ctx) + 1;
+): ContextGeneralString {
+    const index = getLogCount(serviceId, ctx) + 1;
     const hash = "";
     const parentHash = "";
     // TODO verify transaction data
@@ -200,46 +171,40 @@ export function appendLogInternal<
     const block = new Block(hash, parentHash, [transaction]);
     const blockData = JSON.stringify<Block>(block);
     const blockDataBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(blockData)))
-    const termId = getTermId<TContext>(ctx);
-    const leaderId = getCurrentNodeId<TContext>(ctx);
+    const termId = getTermId(ctx);
+    const leaderId = getCurrentNodeId(ctx);
     const entry = new LogEntry(index, termId, leaderId, blockDataBase64);
     const entryData = JSON.stringify<LogEntry>(entry);
-    setLogCount<TContext>(serviceId, ctx, index);
-    setLogEntry<TContext>(serviceId, ctx, index, entryData);
+    setLogCount(serviceId, ctx, index);
+    setLogEntry(serviceId, ctx, index, entryData);
     return ctx;
 }
 
-export function appendLogEntry<
-    TContext extends Map<string,string>,
->(
+export function appendLogEntry(
     serviceId: i32,
-    ctx: TContext,
+    ctx: ContextGeneralString,
     entry: LogEntry,
 ): void {
     const entryData = JSON.stringify<LogEntry>(entry);
-    const index = getLogCount<TContext>(serviceId, ctx) + 1;
-    setLogCount<TContext>(serviceId, ctx, index);
-    setLogEntry<TContext>(serviceId, ctx, index, entryData);
+    const index = getLogCount(serviceId, ctx) + 1;
+    setLogCount(serviceId, ctx, index);
+    setLogEntry(serviceId, ctx, index, entryData);
 }
 
-export function setLogEntry<
-    TContext extends Map<string,string>,
->(
+export function setLogEntry(
     serviceId: i32,
-    ctx: TContext,
+    ctx: ContextGeneralString,
     index: i64,
     entry: string,
-): TContext {
+): ContextGeneralString {
     const key = getLogEntryKey(serviceId, index);
     ctx.set(key, entry);
     return ctx;
 }
 
-export function getLogCount<
-    TContext extends Map<string,string>,
->(
+export function getLogCount(
     serviceId: i32,
-    ctx: TContext,
+    ctx: ContextGeneralString,
 ): i64 {
     const key = getLogCountKey(serviceId);
     if (ctx.has(key)) {
@@ -250,13 +215,11 @@ export function getLogCount<
     return i64(0);
 }
 
-export function setLogCount<
-    TContext extends Map<string,string>,
->(
+export function setLogCount(
     serviceId: i32,
-    ctx: TContext,
+    ctx: ContextGeneralString,
     value: i64,
-): TContext {
+): ContextGeneralString {
     const key = getLogCountKey(serviceId);
     ctx.set(key, value.toString());
     return ctx;
@@ -291,71 +254,55 @@ const NEXT_INDEX_ARRAY = "nextIndex";
 // updateNextIndex
 // updateMatchIndex
 
-function getTermId<
-    TContext extends Map<string,string>,
->(ctx: TContext): i32 {
+function getTermId(ctx: ContextGeneralString): i32 {
     if (!ctx.has(TERM_ID)) revert(TERM_ID + " missing");
     const valuestr = ctx.get(TERM_ID);
     const value = parseInt(valuestr);
     return i32(value);
 }
 
-function getCurrentNodeId<
-    TContext extends Map<string,string>,
->(ctx: TContext): i32 {
+function getCurrentNodeId(ctx: ContextGeneralString): i32 {
     if (!ctx.has(CURRENT_NODE_ID)) revert(CURRENT_NODE_ID + " missing");
     const valuestr = ctx.get(CURRENT_NODE_ID);
     const value = parseInt(valuestr);
     return i32(value);
 }
 
-function getLastApplied<
-    TContext extends Map<string,string>,
->(ctx: TContext): i64 {
+function getLastApplied(ctx: ContextGeneralString): i64 {
     if (!ctx.has(LAST_APPLIED)) revert(LAST_APPLIED + " missing");
     const valuestr = ctx.get(LAST_APPLIED);
     const value = parseInt(valuestr);
     return i64(value);
 }
 
-function getCommitIndex<
-    TContext extends Map<string,string>,
->(ctx: TContext): i64 {
+function getCommitIndex(ctx: ContextGeneralString): i64 {
     if (!ctx.has(COMMIT_INDEX)) revert(COMMIT_INDEX + " missing");
     const valuestr = ctx.get(COMMIT_INDEX);
     const value = parseInt(valuestr);
     return i64(value);
 }
 
-function getMatchIndexArray<
-    TContext extends Map<string,string>,
->(ctx: TContext): Array<i64> {
+function getMatchIndexArray(ctx: ContextGeneralString): Array<i64> {
     if (!ctx.has(MATCH_INDEX_ARRAY)) revert(MATCH_INDEX_ARRAY + " missing");
     const valuestr = ctx.get(MATCH_INDEX_ARRAY);
     const value = JSON.parse<Array<i64>>(valuestr);
     return value;
 }
 
-function getNextIndexArray<
-    TContext extends Map<string,string>,
->(ctx: TContext): Array<i64> {
+function getNextIndexArray(ctx: ContextGeneralString): Array<i64> {
     if (!ctx.has(NEXT_INDEX_ARRAY)) revert(NEXT_INDEX_ARRAY + " missing");
     const valuestr = ctx.get(NEXT_INDEX_ARRAY);
     const value = JSON.parse<Array<i64>>(valuestr);
     return value;
 }
 
-function getNodeIPs<
-    TContext extends Map<string,string>,
->(ctx: TContext): Array<string> {
+function getNodeIPs(ctx: ContextGeneralString): Array<string> {
     if (!ctx.has(NODE_IPS)) revert(NODE_IPS + " missing");
     const valuestr = ctx.get(NODE_IPS);
     const value = JSON.parse<Array<string>>(valuestr);
     return value;
 }
 
-function setNextIndexArray<
-    TContext extends Map<string,string>,
->(ctx: TContext, arr: Array<i64>): void {
+function setNextIndexArray(ctx: ContextGeneralString, arr: Array<i64>): void {
     ctx.set(NEXT_INDEX_ARRAY, JSON.stringify<Array<i64>>(arr));
 }

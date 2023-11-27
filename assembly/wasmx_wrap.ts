@@ -12,12 +12,9 @@ import { hexToU8, uint8ArrayToHex, hexToUint8Array } from "./utils";
 
 // @ts-ignore
 @serializable
-export class CallData<
-    TContext extends Map<string,string>,
-    TEvent extends EventObject,
-    TState extends Typestate<TContext>,
-> {
-    create: ConfigExternal<TContext, TEvent, TState> | null = null;
+export class CallData {
+    // TODO - this should only be done in the interpreter storage; to remove
+    create: ConfigExternal | null = null;
     getCurrentState: CallDataGetCurrentState | null = null;
     getContextValue: CallDataGetContextValue | null = null;
     run: CallDataRun | null = null;
@@ -25,20 +22,13 @@ export class CallData<
 
 // @ts-ignore
 @serializable
-export class CallDataGetCurrentState {
-    id: i32;
-    constructor(id: i32) {
-        this.id = id;
-    }
-}
+export class CallDataGetCurrentState {}
 
 // @ts-ignore
 @serializable
 export class CallDataGetContextValue {
-    id: i32;
     key: string;
-    constructor(id: i32, key: string) {
-        this.id = id;
+    constructor(key: string) {
         this.key = key;
     }
 }
@@ -46,10 +36,10 @@ export class CallDataGetContextValue {
 // @ts-ignore
 @serializable
 export class CallDataRun {
-    id: i32;
+    config: ConfigExternal;
     event: EventClassExternal;
-    constructor(id: i32, event: EventClassExternal) {
-        this.id = id;
+    constructor(config: ConfigExternal, event: EventClassExternal) {
+        this.config = config;
         this.event = event;
     }
 }
@@ -66,14 +56,10 @@ export class WasmxLog {
     }
 }
 
-export function getCallDataWrap<
-    TContext extends Map<string,string>,
-    TEvent extends EventObject,
-    TState extends Typestate<TContext>,
->(): CallData<TContext, TEvent, TState> {
+export function getCallDataWrap(): CallData {
     const calldStr = String.UTF8.decode(wasmx.getCallData())
     // console.log("--getCallDataWrap--" + calldStr);
-    const calld = JSON.parse<CallData<TContext, TEvent, TState>>(calldStr);
+    const calld = JSON.parse<CallData>(calldStr);
     return calld;
 }
 

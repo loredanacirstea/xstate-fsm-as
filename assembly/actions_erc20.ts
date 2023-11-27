@@ -3,21 +3,18 @@ import * as wasmxwrap from './wasmx_wrap';
 import * as wasmx from './wasmx';
 
 import {
+  ContextGeneralString,
   EventObject,
   Typestate,
   ActionParam,
 } from './types';
 import { hexToUint8Array, revert } from "./utils";
 
-export function hasEnoughBalance<
-  TContext extends Map<string,string>,
-  TEvent extends EventObject,
-  TState extends Typestate<TContext>,
->(
+export function hasEnoughBalance(
   id: i32,
-  ctx: TContext,
+  ctx: ContextGeneralString,
   params: ActionParam[],
-  event: TEvent,
+  event: EventObject,
 ): boolean {
     let from: string = "";
     let amount: i64 = 0;
@@ -41,15 +38,11 @@ export function hasEnoughBalance<
     return balance >= amount;
 }
 
-export function hasEnoughAllowance<
-  TContext extends Map<string,string>,
-  TEvent extends EventObject,
-  TState extends Typestate<TContext>,
->(
+export function hasEnoughAllowance(
   id: i32,
-  ctx: TContext,
+  ctx: ContextGeneralString,
   params: ActionParam[],
-  event: TEvent,
+  event: EventObject,
 ): boolean {
     let owner: string = "";
     let amount: i64 = 0;
@@ -74,11 +67,9 @@ export function hasEnoughAllowance<
     return allowance >= amount;
 }
 
-export function getBalance<
-    TContext extends Map<string,string>,
->(
+export function getBalance(
     id: i32,
-    ctx: TContext,
+    ctx: ContextGeneralString,
     addr: string,
 ): i64 {
     const key = getBalanceKey(id, addr);
@@ -90,24 +81,20 @@ export function getBalance<
     return i64(0);
 }
 
-export function setBalance<
-    TContext extends Map<string,string>,
->(
+export function setBalance(
     id: i32,
-    ctx: TContext,
+    ctx: ContextGeneralString,
     addr: string,
     amount: i64,
-): TContext {
+): ContextGeneralString {
     const key = getBalanceKey(id, addr);
     ctx.set(key, amount.toString());
     return ctx;
 }
 
-export function getAllowance<
-    TContext extends Map<string,string>,
->(
+export function getAllowance(
     id: i32,
-    ctx: TContext,
+    ctx: ContextGeneralString,
     owner: string,
     spender: string,
 ): i64 {
@@ -120,15 +107,13 @@ export function getAllowance<
     return i64(0);
 }
 
-export function setAllowance<
-    TContext extends Map<string,string>,
->(
+export function setAllowance(
     id: i32,
-    ctx: TContext,
+    ctx: ContextGeneralString,
     owner: string,
     spender: string,
     amount: i64,
-): TContext {
+): ContextGeneralString {
     const key = getAllowanceKey(id, owner, spender);
     ctx.set(key, amount.toString());
     return ctx;
@@ -142,16 +127,12 @@ export function getAllowanceKey(id: i32, owner: string, spender: string): string
     return "allowance_" + id.toString() + "_" + owner + "_" + spender;
 }
 
-export function mint<
-  TContext extends Map<string,string>,
-  TEvent extends EventObject,
-  TState extends Typestate<TContext>,
->(
+export function mint(
     id: i32,
-    ctx: TContext,
+    ctx: ContextGeneralString,
     params: ActionParam[],
-    event: TEvent,
-): TContext {
+    event: EventObject,
+): ContextGeneralString {
     let addr: string = "";
     let amount: i64 = 0;
     for (let i = 0; i < event.params.length; i++) {
@@ -175,16 +156,12 @@ export function mint<
     return setBalance(id, ctx, addr, balance);
 }
 
-export function move<
-    TContext extends Map<string,string>,
-    TEvent extends EventObject,
-    TState extends Typestate<TContext>,
->(
+export function move(
     id: i32,
-    ctx: TContext,
+    ctx: ContextGeneralString,
     params: ActionParam[],
-    event: TEvent,
-): TContext {
+    event: EventObject,
+): ContextGeneralString {
     // console.log("--move--" + event.type + "--" + event.params.length.toString());
     // console.log("--move--" + params.length.toString());
 
@@ -223,16 +200,12 @@ export function move<
     return setBalance(id, ctx, to, balanceTo);
 }
 
-export function approve<
-  TContext extends Map<string,string>,
-  TEvent extends EventObject,
-  TState extends Typestate<TContext>,
->(
+export function approve(
     id: i32,
-    ctx: TContext,
+    ctx: ContextGeneralString,
     params: ActionParam[],
-    event: TEvent,
-): TContext {
+    event: EventObject,
+): ContextGeneralString {
     // console.log("--approve--" + event.type + "--" + event.params.length.toString());
     // console.log("--approve--" + params.length.toString());
 
@@ -261,16 +234,12 @@ export function approve<
     return setAllowance(id, ctx, owner, spender, allowance);
 }
 
-export function logTransfer<
-    TContext extends Map<string,string>,
-    TEvent extends EventObject,
-    TState extends Typestate<TContext>,
->(
+export function logTransfer(
     id: i32,
-    ctx: TContext,
+    ctx: ContextGeneralString,
     params: ActionParam[],
-    event: TEvent,
-): TContext {
+    event: EventObject,
+): ContextGeneralString {
     let from: string = "";
     let to: string = "";
     let amount: i64 = 0;
