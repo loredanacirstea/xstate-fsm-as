@@ -774,3 +774,27 @@ export class EventualArgs {
     this.args = args;
   }
 }
+
+// @ts-ignore
+@serializable
+export class CallRequest {
+  to: string;
+  calldata: string;
+  isQuery: boolean;
+  constructor(to: string, calldata: string, isQuery: boolean) {
+    this.to = to;
+    this.calldata = calldata;
+    this.isQuery = isQuery;
+  }
+}
+
+// @ts-ignore
+@serializable
+export class CallResponse {
+  success: boolean;
+  data: string;
+  constructor(success: boolean, data: string) {
+    this.success = success;
+    this.data = data;
+  }
+}

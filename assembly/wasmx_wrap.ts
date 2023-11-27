@@ -5,6 +5,8 @@ import {
     EventClassExternal,
     EventObject,
     Typestate,
+    CallRequest,
+    CallResponse,
 } from './types';
 import { hexToU8, uint8ArrayToHex, hexToUint8Array } from "./utils";
 
@@ -157,4 +159,10 @@ export function grpcRequest(ip: string, data: string): string {
     const result = wasmx.grpcRequest(req);
     console.log(String.UTF8.decode(result));
     return String.UTF8.decode(result);
+}
+
+export function call(req: CallRequest): CallResponse {
+    const requestStr = JSON.stringify<CallRequest>(req);
+    const responsebz = wasmx.call(String.UTF8.encode(requestStr));
+    return JSON.parse<CallResponse>(String.UTF8.decode(responsebz));
 }

@@ -44,6 +44,11 @@ async function instantiate(module, imports = {}) {
         value = __liftBuffer(value >>> 0);
         __module0.log(value);
       },
+      call(data) {
+        // assembly/wasmx/call(~lib/arraybuffer/ArrayBuffer) => ~lib/arraybuffer/ArrayBuffer
+        data = __liftBuffer(data >>> 0);
+        return __lowerBuffer(__module0.call(data)) || __notnull();
+      },
       storageStore(key, value) {
         // assembly/wasmx/storageStore(~lib/arraybuffer/ArrayBuffer, ~lib/arraybuffer/ArrayBuffer) => void
         key = __liftBuffer(key >>> 0);

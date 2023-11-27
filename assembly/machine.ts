@@ -36,6 +36,7 @@ import {
   EventClassExternal,
   RaiseActionType,
   TimerArgs,
+  CallRequest,
   // ActionMap,
 } from './types';
 import { hexToUint8Array, revert } from "./utils";
@@ -397,9 +398,48 @@ function executeStateAction<
       state.context = newctx;
       return;
     }
+    // If action is not a local action, then it is an external action
+    const success = processExternalCall<TContext, TEvent, TState>(service, id, state, event, action);
+    if (!success) {
+      return revert("action not recognized: " + actionType);
+    }
+
     // state.context
     // action.type
     // action.params
+}
+
+function processExternalCall<
+  TContext extends Map<string,string>,
+  TEvent extends EventObject,
+  TState extends Typestate<TContext>,
+>(
+    service: Service<TContext, TEvent, TState>,
+    id: i32,
+    state: StateMachine.State<TContext, TEvent, TState>,
+    event: TEvent,
+    action:  StateMachine.ActionObject<TContext, TEvent>,
+): boolean {
+  const actionType = action.type;
+  // expect label.function;
+  const parts = actionType.split(".")
+  if (parts.length < 2) {
+    return false;
+  }
+  // contract label => contractAddress
+  if (!state.context.has(parts[0])) {
+    revert("contract label not found in context: " + parts[0]);
+  }
+  const contractAddress = state.context.get(parts[0]);
+  // TODO
+  const calldata = ""
+  const req = new CallRequest(contractAddress, calldata, false);
+  const resp = wasmxwrap.call(req);
+  if (!resp.success) {
+    revert("contract call failed: " + actionType);
+    return resp.success;
+  }
+  return true;
 }
 
 function isAdmin<
