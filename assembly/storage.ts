@@ -8,12 +8,25 @@ import {
   State,
   StateClassExternal,
   StatusMap,
+  ContextParam,
 } from './types';
 
 const STORAGEKEY_STATE = "state"
 const STORAGEKEY_STATUS = "status"
 const STORAGEKEY_CTX = "context_"
 const STORAGEKEY_OWNER = "owner"
+
+export function storeContextParams(params: Array<ContextParam>): void {
+    for (let i = 0; i < params.length; i++) {
+        storeBase64(params[i].key, params[i].value);
+    }
+}
+
+export function storeBase64(key: string, value: string): void {
+    const keybuf = decodeBase64(key);
+    const valuebuf = decodeBase64(value);
+    wasmx.storageStore(keybuf.buffer, valuebuf.buffer);
+}
 
 export function getCurrentStatus(): InterpreterStatus {
     const value = wasmxwrap.sload(STORAGEKEY_STATUS);
@@ -31,6 +44,8 @@ export function getCurrentState(): State {
     return value.toInternal();
 }
 
+// TODO we dont really use this state but load the full state from config each
+// time we transition an event
 export function setCurrentState(value: State): void {
     const valueObj = StateClassExternal.fromInternal(value);
     return wasmxwrap.sstore(STORAGEKEY_STATE, JSON.stringify<StateClassExternal>(valueObj));

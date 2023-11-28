@@ -70,7 +70,7 @@ export class WasmxLog {
 
 export function getCallDataWrap(): CallData {
     const calldStr = String.UTF8.decode(wasmx.getCallData())
-    // console.log("--getCallDataWrap--" + calldStr);
+    console.log("--getCallDataWrap--" + calldStr);
     const calld = JSON.parse<CallData>(calldStr);
     return calld;
 }

@@ -23,6 +23,8 @@ function runFnWrapped (storage = {}, env = {}) {
         let calldata;
         if (runfn === "main") {
           calldata = encodeToUtf8Array(JSON.stringify({[fnName]: args}));
+        } else if (runfn === "instantiate") {
+          calldata = encodeToUtf8Array(JSON.stringify(args));
         } else {
           calldata = args;
         }
@@ -44,8 +46,6 @@ function runFnWrapped (storage = {}, env = {}) {
 const implementations = {actions: {}};
 
 async function runTests() {
-    console.log("=consensusSMTimerConfigOrig=" , JSON.stringify(parseMachine(consensusSMTimerConfigOrig)));
-
 
     let machineConfig, machineConfigStr, implementationsStr;
     const storage = {};
@@ -54,23 +54,25 @@ async function runTests() {
     let runFn = runFnWrapped(storage);
 
     // Create the machine
-    result = await runFn("create", machineConfigSemaphore)
-    console.log("!!!!!create", decodeFromUtf8Array(result))
-    machineId = JSON.parse(decodeFromUtf8Array(result)).id;
-    assert.strictEqual(machineId, 0);
+    let machine = {id: machineConfigSemaphore.id, states: machineConfigSemaphore.states};
+    await runFn("", {config: machine, initialState: machineConfigSemaphore.initial, params: machineConfigSemaphore.context}, "instantiate")
+    // result = await runFn("create", machineConfigSemaphore)
+    // console.log("!!!!!create", decodeFromUtf8Array(result))
+    // machineId = JSON.parse(decodeFromUtf8Array(result)).id;
+    // assert.strictEqual(machineId, 0);
 
     // Get initial state
-    result = await runFn("getCurrentState", {id: machineId});
+    result = await runFn("getCurrentState", {});
     console.log("!!!!!currentState", decodeFromUtf8Array(result))
     currentState = decodeFromUtf8Array(result);
     assert.strictEqual(currentState, "red");
 
     // Run next state
-    await runFn("run", {id: machineId, event: {type: "next", params: []}});
+    await runFn("run", {config: machine, event: {type: "next", params: []}});
     console.log("!!!!!!! -> next");
 
     // Check state has changed
-    currentState = await runFn("getCurrentState", {id: machineId});
+    currentState = await runFn("getCurrentState", {});
     console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
     assert.strictEqual(decodeFromUtf8Array(currentState), "blue");
 

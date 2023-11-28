@@ -2,9 +2,10 @@ import { JSON } from "json-as/assembly";
 import { decode as decodeBase64 } from "as-base64/assembly";
 import {
   eventual as _eventual,
+  instantiate as _instantiate,
   runInternal,
-  storeContextParams,
   ServiceExternal,
+  findStateInfo,
 } from './machine';
 import * as wasmx from './wasmx';
 import * as wasmxwrap from './wasmx_wrap';
@@ -12,7 +13,6 @@ import {arrayBufferToU8Array, parseUint8ArrayToI32BigEndian} from './utils';
 import {
   EventClass,
   TimerArgs,
-  InterpreterStatus,
 } from './types';
 import {
   getCurrentState,
@@ -24,12 +24,7 @@ export function wasmx_env_2(): void {}
 export function instantiate(): void {
   const calldStr = String.UTF8.decode(wasmx.getCallData())
   const calld = JSON.parse<wasmxwrap.CallDataInstantiate>(calldStr);
-  storeContextParams(calld.params);
-  wasmx.storageStore(String.UTF8.encode("state"), decodeBase64(calld.initialState).buffer);
-  wasmxwrap.sstore("interpreter_status", InterpreterStatus.NotStarted.toString());
-  const service = new ServiceExternal(calld.config , InterpreterStatus.NotStarted).toInternal();
-  // TODO start endpoint?
-  service.start();
+  _instantiate(calld.config, calld.initialState, calld.params);
 }
 
 export function main(): u8[] {

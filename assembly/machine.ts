@@ -34,16 +34,27 @@ const INIT_EVENT = new InitEvent();
 const ASSIGN_ACTION: AssignAction = 'xstate.assign';
 const WILDCARD = '*';
 
-export function storeContextParams(params: Array<ContextParam>): void {
-  for (let i = 0; i < params.length; i++) {
-    storeBase64(params[i].key, params[i].value);
-  }
-}
+export function instantiate(
+  config: MachineExternal,
+  initialState: string,
+  params: ContextParam[],
+): void {
+  storage.storeContextParams(params);
+  storage.setCurrentStatus(InterpreterStatus.NotStarted);
 
-export function storeBase64(key: string, value: string): void {
-  const keybuf = decodeBase64(key);
-  const valuebuf = decodeBase64(value);
-  wasmx.storageStore(keybuf.buffer, valuebuf.buffer);
+  // TODO see if there are initial actions to perform (e.g. entry actions)
+  // const stateConfig = findStateInfo(service.machine.states, initialState);
+  const iniactions:  ActionObject[] = [];
+  const res = handleActions(
+    iniactions,
+    INIT_EVENT as EventObject
+  );
+  const initialActions = res.actions;
+  storage.setCurrentState(new State(initialState, initialActions, false));
+
+  const service = new ServiceExternal(config , InterpreterStatus.NotStarted).toInternal();
+  // TODO start endpoint?
+  service.start();
 }
 
 function createUnchangedState(value: string): State {
@@ -115,7 +126,7 @@ function executeStateActions(
     state: State,
     event: EventObject
 ): void {
-  console.log("* executeStateActions: ")
+  console.log("* executeStateActions: " + state.actions.length.toString())
   for (let i = 0; i < state.actions.length; i++) {
     const action = state.actions[i];
     executeStateAction(service, state, event, action);
@@ -319,17 +330,19 @@ export class Service implements StateMachine.Service {
     status: InterpreterStatus,
   ) {
     this.machine = machine;
-    this.status = status || InterpreterStatus.NotStarted;
+    this.status = status;
     this.listeners = new Set<StateMachine.StateListener>();
   }
 
   send(event: EventObject): void {
     console.log("* send event: " + event.type);
+    console.log("* status: " + this.status.toString());
     if (this.status !== InterpreterStatus.Running) {
       return;
     }
     let state = storage.getCurrentState();
     state = this.machine.transition(state, event);
+    console.log("posttransition state: " + state.value);
     executeStateActions(this, state, event);
     storage.setCurrentState(state);
 
@@ -350,6 +363,7 @@ export class Service implements StateMachine.Service {
   }
 
   start(): Service {
+    this.status = InterpreterStatus.Running;
     storage.setCurrentStatus(InterpreterStatus.Running)
     let state = storage.getCurrentState();
     executeStateActions(this, state, INIT_EVENT);
@@ -358,6 +372,7 @@ export class Service implements StateMachine.Service {
   }
 
   stop(): Service {
+    this.status = InterpreterStatus.Stopped;
     storage.setCurrentStatus(InterpreterStatus.Stopped)
     this.listeners.clear();
     return this;
