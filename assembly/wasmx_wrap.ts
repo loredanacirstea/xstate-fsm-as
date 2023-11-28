@@ -33,10 +33,10 @@ export class CallData {
 @serializable
 export class CallDataInstantiate {
     initialState: string;
-    params: Array<ContextParam>;
-    constructor(state: string, params: Array<ContextParam>) {
+    context: Array<ContextParam>;
+    constructor(state: string, context: Array<ContextParam>) {
         this.initialState = state;
-        this.params = params;
+        this.context = context;
     }
 }
 

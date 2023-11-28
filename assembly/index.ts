@@ -32,7 +32,7 @@ export function main(): u8[] {
       result = runInternal(config, _event);
     } else if (calldata.instantiate !== null) {
       const calld = calldata.instantiate!;
-      _instantiate(config, calld.initialState, calld.params);
+      _instantiate(config, calld.initialState, calld.context);
       result = new ArrayBuffer(0)
     } else if (calldata.getCurrentState !== null) {
       const state = getCurrentState();

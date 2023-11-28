@@ -58,7 +58,7 @@ async function runTests() {
 
     // Create the machine
     let machine = {id: machineConfigSemaphore.id, states: machineConfigSemaphore.states};
-    await runFn("instantiate", machine, {initialState: machineConfigSemaphore.initial, params: machineConfigSemaphore.context})
+    await runFn("instantiate", machine, {initialState: machineConfigSemaphore.initial, context: machineConfigSemaphore.context})
 
     // Get initial state
     result = await runFn("getCurrentState", machine, {});
@@ -82,7 +82,7 @@ async function runTests() {
 
     // Create the machine
     machine = {id: machineConfig.id, states: machineConfig.states};
-    await runFn("instantiate", machine, {initialState: machineConfig.initial, params: machineConfig.context})
+    await runFn("instantiate", machine, {initialState: machineConfig.initial, context: machineConfig.context})
 
     // Get initial state
     result = await runFn("getCurrentState", machine, {});
@@ -140,7 +140,7 @@ async function runTests() {
 
     // Create the machine
     machine = {id: machineConfig.id, states: machineConfig.states};
-    await runFn("instantiate", machine, {initialState: machineConfig.initial, params: machineConfig.context})
+    await runFn("instantiate", machine, {initialState: machineConfig.initial, context: machineConfig.context})
 
     // Run next state
     await runFn("run", machine, {event: {type: "increment", params: []}});
@@ -160,7 +160,7 @@ async function runTests() {
 
     // Create the machine
     machine = {id: machineConfig.id, states: machineConfig.states};
-    await runFnOwner("instantiate", machine, {initialState: machineConfig.initial, params: machineConfig.context})
+    await runFnOwner("instantiate", machine, {initialState: machineConfig.initial, context: machineConfig.context})
 
     // Apply event
     await runFnOwner("run", machine, {event: {type: "increment", params: []}});
@@ -195,7 +195,7 @@ async function runTests() {
 
     // Create the machine
     machine = {id: machineConfig.id, states: machineConfig.states};
-    await runFnOwner("instantiate", machine, {initialState: machineConfig.initial, params: machineConfig.context})
+    await runFnOwner("instantiate", machine, {initialState: machineConfig.initial, context: machineConfig.context})
 
     // Check state is active
     currentState = await runFn("getCurrentState", machine, {});
@@ -267,7 +267,7 @@ async function runTests() {
     console.log(JSON.stringify(machineConfig));
     // Create the machine
     machine = {id: machineConfig.id, states: machineConfig.states};
-    await runFn("instantiate", machine, {initialState: machineConfig.initial, params: machineConfig.context})
+    await runFn("instantiate", machine, {initialState: machineConfig.initial, context: machineConfig.context})
 
     await runFnOwner("run", machine, {event: {type: "sendRequest", params: [{key: "address", value: "localhost"}, {key: "data", value: "hello"}]}});
 
@@ -279,7 +279,7 @@ async function runTests() {
     console.log(JSON.stringify(machineConfig));
     // Create the machine
     machine = {id: machineConfig.id, states: machineConfig.states};
-    await runFn("instantiate", machine, {initialState: machineConfig.initial, params: machineConfig.context})
+    await runFn("instantiate", machine, {initialState: machineConfig.initial, context: machineConfig.context})
 
     // RAFTLogReplication
     machineConfig = parseMachine(RAFTLogReplication);
@@ -287,7 +287,7 @@ async function runTests() {
     console.log(JSON.stringify(machineConfig));
     // Create the machine
     machine = {id: machineConfig.id, states: machineConfig.states};
-    await runFn("instantiate", machine, {initialState: machineConfig.initial, params: machineConfig.context})
+    await runFn("instantiate", machine, {initialState: machineConfig.initial, context: machineConfig.context})
     let txstr;
 
     txstr = JSON.stringify({termId: 1, leaderId: 0, prevLogIndex: 2, prevLogTerm: 0, entries: [{index: 2, termId: 1, leaderId: 0, data: ""}]})
