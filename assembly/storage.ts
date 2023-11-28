@@ -18,7 +18,8 @@ const STORAGEKEY_OWNER = "owner"
 
 export function storeContextParams(params: Array<ContextParam>): void {
     for (let i = 0; i < params.length; i++) {
-        storeBase64(params[i].key, params[i].value);
+        // storeBase64(params[i].key, params[i].value);
+        setContextValue(params[i].key, params[i].value);
     }
 }
 
@@ -66,7 +67,6 @@ export function setContextValue(key: string, value: string): void {
 export function setContextValueInternal(key: string, value: ArrayBuffer): void {
     return wasmx.storageStore(String.UTF8.encode(STORAGEKEY_CTX + key), value);
 }
-
 
 export function storeOwner(owner: string): void {
     wasmxwrap.sstore(STORAGEKEY_OWNER, owner);

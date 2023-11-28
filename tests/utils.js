@@ -108,3 +108,19 @@ export function raise(event, options = {}) {
     // _raise.delay = options.delay;
     return _raise;
 }
+
+export function numToUint8Array(num) {
+    let arr = new Uint8Array(8);
+
+    for (let i = 0; i < 8; i++) {
+      arr[i] = num % 256;
+      num = Math.floor(num / 256);
+    }
+
+    return arr.reverse();
+}
+
+export function numToUint8Array32(num) {
+    const val = numToUint8Array(num);
+    return new Uint8Array([...new Uint8Array(24), ...val]);
+}

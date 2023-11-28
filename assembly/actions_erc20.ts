@@ -105,11 +105,11 @@ export function setAllowance(
 }
 
 export function getBalanceKey(addr: string): string {
-    return "balance_" + "_" + addr;
+    return "balance_" + addr;
 }
 
 export function getAllowanceKey(owner: string, spender: string): string {
-    return "allowance_" + "_" + owner + "_" + spender;
+    return "allowance_" + owner + "_" + spender;
 }
 
 export function mint(

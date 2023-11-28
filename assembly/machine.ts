@@ -41,6 +41,7 @@ export function instantiate(
 ): void {
   storage.storeContextParams(params);
   storage.setCurrentStatus(InterpreterStatus.NotStarted);
+  storage.storeOwner(wasmxwrap.getCaller());
 
   // TODO see if there are initial actions to perform (e.g. entry actions)
   // const stateConfig = findStateInfo(service.machine.states, initialState);
@@ -281,7 +282,7 @@ function isAdmin(
 ): boolean {
   const caller = wasmxwrap.getCaller();
   const owner = storage.loadOwner();
- return caller === owner;
+  return caller === owner;
 }
 
 function log(
