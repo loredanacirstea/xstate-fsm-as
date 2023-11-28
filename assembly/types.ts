@@ -48,15 +48,13 @@ export class InitEvent implements EventObject {
 export type ContextGeneral<T> =  Map<string,T>
 export type ContextGeneralString =  Map<string,string>
 
-export type StateInfoEvents = Map<string,StateMachine.Transition>
+export type StateInfoEvents = Map<string,Transition>
 
-export type StateTimers = Map<string,StateMachine.Transition>
+export type StateTimers = Map<string,Transition>
 
 export interface StateInfo {
   after: StateTimers | null;
   on: StateInfoEvents;
-  // exit: Array<StateMachine.Action>;
-  // entry: Array<StateMachine.Action>;
   exit: Array<ActionClass>;
   entry: Array<ActionClass>;
   initial: string;
@@ -65,55 +63,10 @@ export interface StateInfo {
 
 export type States = Map<string,StateInfo>
 
+export type ActionFunction = (event: EventObject) => void;
+export type AssignAction = 'xstate.assign';
+
 export namespace StateMachine {
-  export interface Action {
-    value: string;
-    action: ActionObject | null;
-    // actionFn: ActionFunction | null;
-    // assignAction: AssignActionObject | null;
-  }
-
-  export type ActionMap = Map<string, string>
-
-  export interface ActionObject {
-    // type: string;
-    // exec: ActionFunction | null;
-    // assignment: PropertyAssigner<ContextGeneralString> | null;
-    // assignmentFn: PropertyAssignerFn | null;
-    // properties: Map<string,string>
-    type: string;
-    params: Array<ActionParam>;
-    // event: EventObject | null;
-    event: EventClassExternal | null
-  }
-
-  export type ActionFunction = (context: ContextGeneralString, event: EventObject) => void;
-
-  export type AssignAction = 'xstate.assign';
-
-  export interface AssignActionObject extends ActionObject {
-    type: AssignAction;
-    // assignment: PropertyAssigner<ContextGeneralString> | null;
-    assignment: Map<string, string> | null;
-    // assignmentFn: PropertyAssignerFn | null;
-    assignmentFn: ((context: ContextGeneralString, event: EventObject) => string) | null;
-  }
-
-  export interface Transition {
-    target: string;
-    actions: Array<ActionObject>;
-    guard: string;
-    cond: ((event: EventObject) => boolean) | null;
-    // TODO meta {}
-  }
-
-  export interface State {
-    value: string;
-    actions: Array<ActionObject>;
-    changed: boolean;
-    // matches: (value: string) => (stateValue: string) => boolean;
-  }
-
   export interface Machine {
     id: string;
     states: States;
@@ -122,9 +75,9 @@ export namespace StateMachine {
       event: EventObject
     ): State;
     applyTransition(
-      state: StateMachine.State,
-      transition: StateMachine.Transition
-    ): StateMachine.State;
+      state: State,
+      transition: Transition
+    ): State;
   }
 
   export type StateListener = (state: State) => void;
@@ -160,11 +113,11 @@ export interface Typestate {
 // > = TEvent extends { type: TEventType } ? TEvent : never;
 
 export class HandledActions {
-  actions: Array<StateMachine.ActionObject> = [];
+  actions: Array<ActionObject> = [];
   assigned: boolean = false;
 
   constructor(
-    actions: Array<StateMachine.ActionObject>,
+    actions: Array<ActionObject>,
     assigned: boolean
   ) {
     this.actions = actions;
@@ -190,10 +143,14 @@ export class ActionParam {
 
 // @ts-ignore
 @serializable
-export class ActionObject implements StateMachine.ActionObject{
+export class ActionObject {
   type: string;
   params: Array<ActionParam>
   event: EventClassExternal | null
+  // exec: ActionFunction | null;
+  // assignment: PropertyAssigner<ContextGeneralString> | null;
+  // assignmentFn: PropertyAssignerFn | null;
+  // properties: Map<string,string>
 
   constructor(type: string, params: Array<ActionParam>, event: EventClassExternal | null) {
     this.type = type;
@@ -217,34 +174,15 @@ export class RaiseAction extends ActionObject{
   }
 }
 
-export class State implements StateMachine.State {
+export class State {
   value: string;
-  actions: Array<StateMachine.ActionObject>;
+  actions: Array<ActionObject>;
   changed: boolean;
   // matches: (value: string) => (stateValue: string) => boolean;
 
   constructor(
     value: string,
-    actions: Array<StateMachine.ActionObject>,
-    changed: boolean,
-    // matches: (value: string) => (stateValue: string) => boolean,
-  ) {
-    this.value = value;
-    this.actions = actions;
-    this.changed = changed;
-    // this.matches = matches;
-  }
-}
-
-export class StateClass implements StateMachine.State {
-  value: string;
-  actions: Array<StateMachine.ActionObject>;
-  changed: boolean;
-  // matches: (value: string) => (stateValue: string) => boolean;
-
-  constructor(
-    value: string,
-    actions: Array<StateMachine.ActionObject>,
+    actions: Array<ActionObject>,
     changed: boolean,
     // matches: (value: string) => (stateValue: string) => boolean,
   ) {
@@ -274,7 +212,7 @@ export class StateClassExternal {
   }
 
   toInternal(): State {
-    const stateactions: Array<StateMachine.ActionObject> = [];
+    const stateactions: Array<ActionObject> = [];
     for (let i = 0; i < this.actions.length; i++) {
         const act = this.actions[i];
         stateactions.push(new ActionObject(act.type, act.params, act.event));
@@ -303,15 +241,17 @@ export class StateClassExternal {
 
 // @ts-ignore
 @serializable
-export class AssignActionObject extends ActionObject implements StateMachine.AssignActionObject {
-  type: StateMachine.AssignAction;
+export class AssignActionObject extends ActionObject {
+  type: AssignAction;
+   // assignment: PropertyAssigner<ContextGeneralString> | null;
   assignment: Map<string, string> | null;
-  assignmentFn: ((context: ContextGeneralString, event: EventObject) => string) | null;
+  // assignmentFn: PropertyAssignerFn | null;
+  assignmentFn: ((event: EventObject) => string) | null;
 
   constructor(
-    type: StateMachine.AssignAction,
+    type: AssignAction,
     assignment: Map<string, string> | null,
-    assignmentFn: ((context: ContextGeneralString, event: EventObject) => string) | null,
+    assignmentFn: ((event: EventObject) => string) | null,
   ) {
     super(type, [], null);
     this.type = type;
@@ -322,34 +262,35 @@ export class AssignActionObject extends ActionObject implements StateMachine.Ass
 
 // @ts-ignore
 @serializable
-export class ActionClass implements StateMachine.Action {
+export class ActionClass {
   value: string;
   action: ActionObject | null;
-  actionFn: StateMachine.ActionFunction | null;
-  assignAction: AssignActionObject | null;
+  // actionFn: StateMachine.ActionFunction | null;
+  // assignAction: AssignActionObject | null;
 
   constructor(
     value: string,
     action: ActionObject | null,
-    actionFn: StateMachine.ActionFunction | null,
-    assignAction: AssignActionObject | null,
+    // actionFn: StateMachine.ActionFunction | null,
+    // assignAction: AssignActionObject | null,
   ) {
     this.value = value;
     this.action = action;
-    this.actionFn = actionFn;
-    this.assignAction = assignAction;
+    // this.actionFn = actionFn;
+    // this.assignAction = assignAction;
   }
 }
 
-export class Transition implements StateMachine.Transition{
+export class Transition {
   target: string;
-  actions: Array<StateMachine.ActionObject>;
+  actions: Array<ActionObject>;
   guard: string;
   cond: ((event: EventObject) => boolean) | null;
+  // TODO meta {}
 
   constructor(
     target: string,
-    actions: Array<StateMachine.ActionObject>,
+    actions: Array<ActionObject>,
     guard: string,
     cond: ((event: EventObject) => boolean) | null,
   ) {
@@ -397,8 +338,6 @@ export class StateInfoClass implements StateInfo {
     on: StateInfoEvents,
     exit: Array<ActionClass>,
     entry: Array<ActionClass>,
-    // exit: Array<StateMachine.Action>,
-    // entry: Array<StateMachine.Action>,
     initial: string,
     childstates: States,
   ) {
@@ -528,10 +467,10 @@ export class StateInfoClassExternal {
   }
 
   toInternal(): StateInfo {
-    const stateon: StateInfoEvents = new Map<string,StateMachine.Transition>();
+    const stateon: StateInfoEvents = new Map<string,Transition>();
     for (let j = 0; j < this.on.length; j++) {
         const onev = this.on[j];
-        const actions: Array<StateMachine.ActionObject> = [];
+        const actions: Array<ActionObject> = [];
         for (let k = 0; k < onev.actions.length; k++) {
             const action = onev.actions[k];
             actions.push(new ActionObject(action.type, action.params, action.event));
@@ -548,7 +487,7 @@ export class StateInfoClassExternal {
       afterTimers = new Map();
       for (let i = 0; i < this.after.length; i++) {
         const aft = this.after[i];
-        const actions: Array<StateMachine.ActionObject> = [];
+        const actions: Array<ActionObject> = [];
         for (let k = 0; k < aft.actions.length; k++) {
             const action = aft.actions[k];
             actions.push(new ActionObject(action.type, action.params, action.event));

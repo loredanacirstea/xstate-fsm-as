@@ -8,7 +8,6 @@ import {
   InitEvent,
   InterpreterStatus,
   StateMachine,
-  Typestate,
   HandledActions,
   UnsubscribeReturnValue,
   ActionObject,
@@ -18,14 +17,12 @@ import {
   EventClass,
   ActionParam,
   ContextParam,
-  StateClass,
-  StateClassExternal,
   StateInfoClassExternal,
-  EventClassExternal,
   RaiseActionType,
   TimerArgs,
   CallRequest,
-  StatusMap,
+  AssignAction,
+  Transition,
 } from './types';
 import { hexToUint8Array, revert } from "./utils";
 import * as storage from './storage';
@@ -34,7 +31,7 @@ import * as actionsErc20 from "./actions_erc20";
 import * as actionsRaft from "./actions_raft";
 
 const INIT_EVENT = new InitEvent();
-const ASSIGN_ACTION: StateMachine.AssignAction = 'xstate.assign';
+const ASSIGN_ACTION: AssignAction = 'xstate.assign';
 const WILDCARD = '*';
 
 export function storeContextParams(params: Array<ContextParam>): void {
@@ -49,17 +46,17 @@ export function storeBase64(key: string, value: string): void {
   wasmx.storageStore(keybuf.buffer, valuebuf.buffer);
 }
 
-function createUnchangedState(value: string): StateMachine.State {
+function createUnchangedState(value: string): State {
   return new State(value, [], false);
   // matches: createMatcher(value)
 }
 
 function handleActions(
-  actions: Array<StateMachine.ActionObject>,
+  actions: Array<ActionObject>,
   eventObject: EventObject
 ): HandledActions {
   let assigned = false;
-  const nonAssignActions: StateMachine.ActionObject[] = [];
+  const nonAssignActions: ActionObject[] = [];
 
   for (let i = 0; i < actions.length; i++) {
     const action = actions[i];
@@ -115,7 +112,7 @@ function executeGuard(
 
 function executeStateActions(
     service: Service,
-    state: StateMachine.State,
+    state: State,
     event: EventObject
 ): void {
   console.log("* executeStateActions: ")
@@ -163,9 +160,9 @@ function executeStateActions(
 
 function executeStateAction(
     service: Service,
-    state: StateMachine.State,
+    state: State,
     event: EventObject,
-    action:  StateMachine.ActionObject,
+    action:  ActionObject,
 ): void {
     const actionType = action.type;
     console.log("* execute action: " + actionType);
@@ -181,51 +178,51 @@ function executeStateAction(
         return;
     }
     if (actionType === "mint") {
-        const newctx = actionsErc20.mint(action.params, event);
+        actionsErc20.mint(action.params, event);
         return;
     }
     if (actionType === "move") {
-        const newctx = actionsErc20.move(action.params, event);
+        actionsErc20.move(action.params, event);
         return;
     }
     if (actionType === "approve") {
-        const newctx = actionsErc20.approve(action.params, event);
+        actionsErc20.approve(action.params, event);
         return;
     }
     if (actionType === "sendRequest") {
-      const newctx = sendRequest(action.params, event);
+      sendRequest(action.params, event);
       return;
     }
     if (actionType === "logTransfer") {
-        const newctx = actionsErc20.logTransfer(action.params, event);
+        actionsErc20.logTransfer(action.params, event);
         return;
     }
     if (actionType === "increment") {
-      const newctx = actionsCounter.increment(action.params);
+      actionsCounter.increment(action.params);
       return;
     }
     if (actionType === "log") {
-        const newctx = log(action.params);
+        log(action.params);
         return
     }
     if (actionType === "processAppendEntries") {
-      const newctx = actionsRaft.processAppendEntries(action.params, event);
+      actionsRaft.processAppendEntries(action.params, event);
       return;
     }
     if (actionType === "sendHeartbeatResponse") {
-      const newctx = actionsRaft.sendHeartbeatResponse(action.params, event);
+      actionsRaft.sendHeartbeatResponse(action.params, event);
       return;
     }
     if (actionType === "sendAppendEntries") {
-      const newctx = actionsRaft.sendAppendEntries(action.params, event);
+      actionsRaft.sendAppendEntries(action.params, event);
       return;
     }
     if (actionType === "sendNewTransactionResponse") {
-      const newctx = actionsRaft.sendNewTransactionResponse(action.params, event);
+      actionsRaft.sendNewTransactionResponse(action.params, event);
       return;
     }
     if (actionType === "appendLog") {
-      const newctx = actionsRaft.appendLog(action.params, event);
+      actionsRaft.appendLog(action.params, event);
       return;
     }
     // If action is not a local action, then it is an external action
@@ -241,9 +238,9 @@ function executeStateAction(
 
 function processExternalCall(
     service: Service,
-    state: StateMachine.State,
+    state: State,
     event: EventObject,
-    action:  StateMachine.ActionObject,
+    action:  ActionObject,
 ): boolean {
   const actionType = action.type;
   // expect label.function;
@@ -408,9 +405,9 @@ export class Machine implements StateMachine.Machine {
   }
 
   transition(
-    state: StateMachine.State,
+    state: State,
     event: EventObject
-  ): StateMachine.State {
+  ): State {
     const value = state.value;
     const eventObject = event;
     // console.log("----transition-config.states-" + this.config.states.keys().join(","));
@@ -434,7 +431,7 @@ export class Machine implements StateMachine.Machine {
       const transition = stateConfig.on.get(eventObject.type);
       console.log("* transition next target: " + transition.target)
 
-      const transitions: Array<StateMachine.Transition> = [transition];
+      const transitions: Array<Transition> = [transition];
 
       if (stateConfig.on.has(WILDCARD)) {
         const _trans = stateConfig.on.get(WILDCARD);
@@ -478,7 +475,7 @@ export class Machine implements StateMachine.Machine {
 
         // console.log("----transition-cond--" + cond.toString())
         if (cond(eventObject)) {
-          // const allActions: StateMachine.Action[] = (
+          // const allActions: ActionClass[] = (
           //   isTargetless
           //     ? actions
           //     : stateConfig.exit
@@ -486,7 +483,7 @@ export class Machine implements StateMachine.Machine {
           //         .concat(nextStateConfig.entry)
           //         // .filter((a) => a)
           // )
-          let allActions: StateMachine.ActionObject[] = [];
+          let allActions: ActionObject[] = [];
           if (!isTargetless) {
             // for (let i = 0; i < stateConfig.exit.length; i++) {
             //   allActions.push(stateConfig.exit[i]);
@@ -541,7 +538,7 @@ export class Machine implements StateMachine.Machine {
             // allActions = allActions.concat(nextStateConfig.entry);
           }
 
-          // const allActionObjects: StateMachine.ActionObject[] = [];
+          // const allActionObjects: ActionObject[] = [];
 
           // for (let i = 0; i < allActions.length; i++) {
           //   const action = allActions[i];
@@ -592,9 +589,9 @@ export class Machine implements StateMachine.Machine {
   }
 
   applyTransition(
-    state: StateMachine.State,
-    transition: StateMachine.Transition
-  ): StateMachine.State {
+    state: State,
+    transition: Transition
+  ): State {
     console.log("* applyTransition: " + transition.target);
     const value = state.value;
     const stateConfig = findStateInfo(this.states, value);
@@ -604,7 +601,7 @@ export class Machine implements StateMachine.Machine {
         throw new Error(message);
     }
 
-    const transitions: Array<StateMachine.Transition> = [transition];
+    const transitions: Array<Transition> = [transition];
 
     if (stateConfig.on.has(WILDCARD)) {
       const _trans = stateConfig.on.get(WILDCARD);
@@ -647,7 +644,7 @@ export class Machine implements StateMachine.Machine {
 
       // console.log("----transition-cond--" + cond.toString())
       if (true) {
-        // const allActions: StateMachine.Action[] = (
+        // const allActions: ActionClass[] = (
         //   isTargetless
         //     ? actions
         //     : stateConfig.exit
@@ -655,7 +652,7 @@ export class Machine implements StateMachine.Machine {
         //         .concat(nextStateConfig.entry)
         //         // .filter((a) => a)
         // )
-        let allActions: StateMachine.ActionObject[] = [];
+        let allActions: ActionObject[] = [];
         if (!isTargetless) {
           // for (let i = 0; i < stateConfig.exit.length; i++) {
           //   allActions.push(stateConfig.exit[i]);
@@ -710,7 +707,7 @@ export class Machine implements StateMachine.Machine {
           // allActions = allActions.concat(nextStateConfig.entry);
         }
 
-        // const allActionObjects: StateMachine.ActionObject[] = [];
+        // const allActionObjects: ActionObject[] = [];
 
         // for (let i = 0; i < allActions.length; i++) {
         //   const action = allActions[i];
