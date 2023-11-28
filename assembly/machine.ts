@@ -343,9 +343,9 @@ export class Service implements StateMachine.Service {
     }
     let state = storage.getCurrentState();
     state = this.machine.transition(state, event);
-    console.log("posttransition state: " + state.value);
-    executeStateActions(this, state, event);
+    console.log("* posttransition state: " + state.value);
     storage.setCurrentState(state);
+    executeStateActions(this, state, event);
 
     const listeners = this.listeners.values();
     for (let i = 0; i < listeners.length; i++) {
@@ -871,7 +871,7 @@ export function eventual(config: MachineExternal, intervalId: i32, args: TimerAr
   console.log("* eventual: " + args.state + "--" + args.delay);
   const service = loadServiceFromConfig(config);
   const currentState = storage.getCurrentState();
-  console.log("* eventual - finding state: " + currentState);
+  console.log("* eventual - finding state: " + currentState.value);
 
   if (currentState.value !== args.state) {
     // we are in the wrong state, so the interval must be stopped
@@ -881,7 +881,7 @@ export function eventual(config: MachineExternal, intervalId: i32, args: TimerAr
 
   const newstateconfig = findStateInfo(service.machine.states, currentState.value);
   if (!newstateconfig) {
-    return revert("could not find state config for " + currentState);
+    return revert("could not find state config for " + currentState.value);
   }
   console.log("* eventual - finding after");
   const afterTimers = newstateconfig.after;

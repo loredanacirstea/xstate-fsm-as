@@ -286,9 +286,8 @@ async function runTests() {
     console.log("==RAFTLogReplication==");
     console.log(JSON.stringify(machineConfig));
     // Create the machine
-    result = await runFnOwner("create", machineConfig);
-    machineId = JSON.parse(decodeFromUtf8Array(result)).id;
-    assert.strictEqual(machineId, 7);
+    machine = {id: machineConfig.id, states: machineConfig.states};
+    await runFn("instantiate", machine, {initialState: machineConfig.initial, params: machineConfig.context})
     let txstr;
 
     txstr = JSON.stringify({termId: 1, leaderId: 0, prevLogIndex: 2, prevLogTerm: 0, entries: [{index: 2, termId: 1, leaderId: 0, data: ""}]})
@@ -307,7 +306,7 @@ async function runTests() {
     await runFnOwner("run", machine, {event: {type: "newTransaction", params: [{key: "transaction", value: btoa(txstr)}]}});
 
     const bz = encodeToUtf8Array(JSON.stringify({"delay":"heartbeatTimeout","serviceId":machineId,"state":"active"}))
-    await runFnOwner("eventual", new Uint8Array([0, 0, 0, 0, ...bz]), "eventual");
+    await runFnOwner("eventual", machine, new Uint8Array([0, 0, 0, 0, ...bz]), "eventual");
 
     currentState = await runFn("getCurrentState", machine, {});
     console.log("!!!!!currentState", decodeFromUtf8Array(currentState))

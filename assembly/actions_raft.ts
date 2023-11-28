@@ -2,6 +2,7 @@ import { JSON } from "json-as/assembly";
 import { encode as encodeBase64, decode as decodeBase64 } from "as-base64/assembly";
 import * as wasmxwrap from './wasmx_wrap';
 import * as wasmx from './wasmx';
+import * as storage from './storage';
 
 import {
   EventObject,
@@ -215,49 +216,49 @@ const NEXT_INDEX_ARRAY = "nextIndex";
 // updateMatchIndex
 
 function getTermId(): i32 {
-    const valuestr = wasmxwrap.sload(TERM_ID);
+    const valuestr = storage.getContextValue(TERM_ID);
     if (!valuestr) revert(TERM_ID + " missing");
     const value = parseInt(valuestr);
     return i32(value);
 }
 
 function getCurrentNodeId(): i32 {
-    const valuestr = wasmxwrap.sload(CURRENT_NODE_ID);
+    const valuestr = storage.getContextValue(CURRENT_NODE_ID);
     if (!valuestr) revert(CURRENT_NODE_ID + " missing");
     const value = parseInt(valuestr);
     return i32(value);
 }
 
 function getLastApplied(): i64 {
-    const valuestr = wasmxwrap.sload(LAST_APPLIED);
+    const valuestr = storage.getContextValue(LAST_APPLIED);
     if (!valuestr) revert(LAST_APPLIED + " missing");
     const value = parseInt(valuestr);
     return i64(value);
 }
 
 function getCommitIndex(): i64 {
-    const valuestr = wasmxwrap.sload(COMMIT_INDEX);
+    const valuestr = storage.getContextValue(COMMIT_INDEX);
     if (!valuestr) revert(COMMIT_INDEX + " missing");
     const value = parseInt(valuestr);
     return i64(value);
 }
 
 function getMatchIndexArray(): Array<i64> {
-    const valuestr = wasmxwrap.sload(MATCH_INDEX_ARRAY);
+    const valuestr = storage.getContextValue(MATCH_INDEX_ARRAY);
     if (!valuestr) revert(MATCH_INDEX_ARRAY + " missing");
     const value = JSON.parse<Array<i64>>(valuestr);
     return value;
 }
 
 function getNextIndexArray(): Array<i64> {
-    const valuestr = wasmxwrap.sload(NEXT_INDEX_ARRAY);
+    const valuestr = storage.getContextValue(NEXT_INDEX_ARRAY);
     if (!valuestr) revert(NEXT_INDEX_ARRAY + " missing");
     const value = JSON.parse<Array<i64>>(valuestr);
     return value;
 }
 
 function getNodeIPs(): Array<string> {
-    const valuestr = wasmxwrap.sload(NODE_IPS);
+    const valuestr = storage.getContextValue(NODE_IPS);
     if (!valuestr) revert(NODE_IPS + " missing");
     const value = JSON.parse<Array<string>>(valuestr);
     return value;

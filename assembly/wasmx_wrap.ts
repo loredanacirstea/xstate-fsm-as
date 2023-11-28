@@ -75,6 +75,15 @@ export class WasmxLog {
 }
 
 export function getCallDataWrap(): InterpreterCallData {
+    const icalld = getInterpreterCalldata();
+    const configBz = icalld[0];
+    const calldBz = icalld[1];
+    const config = JSON.parse<MachineExternal>(String.UTF8.decode(configBz));
+    const calldata = JSON.parse<CallData>(String.UTF8.decode(calldBz));
+    return new InterpreterCallData(config, calldata);
+}
+
+export function getInterpreterCalldata(): Array<ArrayBuffer> {
     // configBz length + configBz + calldata length + calldata
     const calldraw = wasmx.getCallData();
     const configlenraw = calldraw.slice(0, 32);
@@ -83,10 +92,7 @@ export function getCallDataWrap(): InterpreterCallData {
     const calldlenraw = calldraw.slice(32 + configlen, 64 + configlen)
     const calldlen = parseUint8ArrayToI32BigEndian(Uint8Array.wrap(calldlenraw.slice(28, 32)))
     const calldBz = calldraw.slice(64 + configlen, 64 + configlen + calldlen)
-
-    const config = JSON.parse<MachineExternal>(String.UTF8.decode(configBz));
-    const calldata = JSON.parse<CallData>(String.UTF8.decode(calldBz));
-    return new InterpreterCallData(config, calldata);
+    return [configBz, calldBz]
 }
 
 export function getCaller(): string {

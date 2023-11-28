@@ -3,6 +3,7 @@ import {
   eventual as _eventual,
   instantiate as _instantiate,
   runInternal,
+  MachineExternal,
 } from './machine';
 import * as wasmx from './wasmx';
 import * as wasmxwrap from './wasmx_wrap';
@@ -48,13 +49,15 @@ export function main(): u8[] {
 
 export function eventual(): void {
   console.log("* eventual");
-  const calld = wasmx.getCallData();
+  const icalld = wasmxwrap.getInterpreterCalldata();
+  const configBz = icalld[0];
+  const calld = icalld[1];
+  const config = JSON.parse<MachineExternal>(String.UTF8.decode(configBz));
   console.log("* eventual: calld: " + calld.byteLength.toString());
   const intervalId = parseUint8ArrayToI32BigEndian(Uint8Array.wrap(calld.slice(0, 4)));
   const argsStr = String.UTF8.decode(calld.slice(4));
   console.log("* eventual: args: " + argsStr);
   const _args = JSON.parse<TimerArgs>(argsStr);
   console.log("* eventual: parsed args");
-  // TODO
-  // _eventual(intervalId, _args);
+  _eventual(config, intervalId, _args);
 }
