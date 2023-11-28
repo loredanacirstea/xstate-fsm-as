@@ -1,15 +1,9 @@
 import { JSON } from "json-as/assembly";
 import { decode as decodeBase64 } from "as-base64/assembly";
 import {
-  create as _create,
-  getCurrentState as _getCurrentState,
-  getContextValue as _getContextValue,
   eventual as _eventual,
   runInternal,
-  createInternal,
-  getContextValueInternal,
   storeContextParams,
-  Service,
   ServiceExternal,
 } from './machine';
 import * as wasmx from './wasmx';
@@ -20,6 +14,10 @@ import {
   TimerArgs,
   InterpreterStatus,
 } from './types';
+import {
+  getCurrentState,
+  getContextValueInternal,
+} from './storage';
 
 export function wasmx_env_2(): void {}
 
@@ -27,9 +25,10 @@ export function instantiate(): void {
   const calldStr = String.UTF8.decode(wasmx.getCallData())
   const calld = JSON.parse<wasmxwrap.CallDataInstantiate>(calldStr);
   storeContextParams(calld.params);
-  wasmx.storageStore(String.UTF8.encode("state"), decodeBase64(calld.state));
+  wasmx.storageStore(String.UTF8.encode("state"), decodeBase64(calld.initialState).buffer);
   wasmxwrap.sstore("interpreter_status", InterpreterStatus.NotStarted.toString());
   const service = new ServiceExternal(calld.config , InterpreterStatus.NotStarted).toInternal();
+  // TODO start endpoint?
   service.start();
 }
 
@@ -40,10 +39,9 @@ export function main(): u8[] {
       const event = calldata.run!.event;
       const _event = new EventClass(event.type, event.params);
       result = runInternal(calldata.run!.config, _event);
-    } else if (calldata.create !== null) {
-      result = createInternal(calldata.create!);
     } else if (calldata.getCurrentState !== null) {
-      result = getCurrentState();
+      const state = getCurrentState();
+      result = String.UTF8.encode(state.value);
     } else if (calldata.getContextValue !== null) {
       result = getContextValueInternal(calldata.getContextValue!.key);
     } else {
@@ -63,14 +61,6 @@ export function eventual(): void {
   console.log("* eventual: args: " + argsStr);
   const _args = JSON.parse<TimerArgs>(argsStr);
   console.log("* eventual: parsed args");
-  _eventual(intervalId, _args);
+  // TODO
+  // _eventual(intervalId, _args);
 }
-
-export function getCurrentState(): ArrayBuffer {
-  return _getCurrentState();
-}
-
-export function getContextValue(keyBuf: ArrayBuffer): ArrayBuffer {
-  return _getContextValue(keyBuf);
-}
-

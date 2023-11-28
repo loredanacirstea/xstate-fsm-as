@@ -1,20 +1,19 @@
 import { JSON } from "json-as/assembly";
 import * as wasmx from './wasmx';
 import {
-    ConfigExternal,
     EventClassExternal,
     CallRequest,
     CallResponse,
     ContextParam,
 } from './types';
 import { hexToU8, uint8ArrayToHex, hexToUint8Array } from "./utils";
-import { ServiceExternal } from './machine';
+import { MachineExternal } from './machine';
 
 // @ts-ignore
 @serializable
 export class CallData {
     // TODO - this should only be done in the interpreter storage; to remove
-    create: ConfigExternal | null = null;
+    // create: ConfigExternal | null = null;
     getCurrentState: CallDataGetCurrentState | null = null;
     getContextValue: CallDataGetContextValue | null = null;
     run: CallDataRun | null = null;
@@ -23,12 +22,12 @@ export class CallData {
 // @ts-ignore
 @serializable
 export class CallDataInstantiate {
-    config: ConfigExternal;
-    state: string;
+    config: MachineExternal;
+    initialState: string;
     params: Array<ContextParam>;
-    constructor(config: ConfigExternal, state: string, params: Array<ContextParam>) {
+    constructor(config: MachineExternal, state: string, params: Array<ContextParam>) {
         this.config = config;
-        this.state = state;
+        this.initialState = state;
         this.params = params;
     }
 }
@@ -49,9 +48,9 @@ export class CallDataGetContextValue {
 // @ts-ignore
 @serializable
 export class CallDataRun {
-    config: ConfigExternal;
+    config: MachineExternal;
     event: EventClassExternal;
-    constructor(config: ConfigExternal, event: EventClassExternal) {
+    constructor(config: MachineExternal, event: EventClassExternal) {
         this.config = config;
         this.event = event;
     }
@@ -83,18 +82,6 @@ export function getCaller(): string {
     return uint8ArrayToHex(Uint8Array.wrap(callerbuf));
 }
 
-export function getBalance(address: string): i64 {
-    // console.log("--getBalance--")
-    // const addrbuf = hexToUint8Array(address);
-    // const balancebuf = wasmx.getBalance(addrbuf.buffer);
-    // console.log("--balancebuf-- " + balancebuf.byteLength.toString());
-    // const balanceb = balancebuf.slice(20); // TODO fixme - bigint
-    // const balancehex = uint8ArrayToHex(Uint8Array.wrap(balanceb));
-    // const balance = parseInt(balancehex, 16);
-    // return i64(balance);
-    return i64(0)
-}
-
 export function sstore(key: string, value: string): void {
     wasmx.storageStore(String.UTF8.encode(key), String.UTF8.encode(value));
 }
@@ -108,40 +95,6 @@ export function intToString(value: i32): string {
     let vstr = value.toString(10);
     if (!vstr.includes(".")) return vstr;
     return vstr.substring(0, vstr.length - 2);
-}
-
-export function storeCounter(value: i32): void {
-    sstore("counter", intToString(value));
-}
-
-export function storeOwner(id: i32, owner: string): void {
-    sstore("owner" + id.toString(), owner);
-}
-
-export function loadOwner(id: i32): string {
-    return sload("owner" + id.toString());
-}
-
-export function loadCounter(): i32 {
-    const value = sload("counter");
-    return I32.parseInt(value, 10);
-}
-
-export function createService(value: string): i32 {
-    const counter = loadCounter();
-    const key = counter;
-    sstore(intToString(key), value);
-    storeCounter(key + 1);
-    return key;
-}
-
-export function storeService(id: i32, value: string): void {
-    sstore(intToString(id), value);
-}
-
-export function loadService(id: i32): string {
-    const value = sload(intToString(id));
-    return value;
 }
 
 export function log_fsm(

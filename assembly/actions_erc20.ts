@@ -1,16 +1,14 @@
 import { JSON } from "json-as/assembly";
 import * as wasmxwrap from './wasmx_wrap';
-import * as wasmx from './wasmx';
+import * as storage from './storage';
 
 import {
-  ContextGeneralString,
   EventObject,
   ActionParam,
 } from './types';
 import { hexToUint8Array, revert } from "./utils";
 
 export function hasEnoughBalance(
-  ctx: ContextGeneralString,
   params: ActionParam[],
   event: EventObject,
 ): boolean {
@@ -32,12 +30,11 @@ export function hasEnoughBalance(
     if (amount === 0) {
         return true;
     }
-    const balance = getBalance(ctx, from)
+    const balance = getBalance(from)
     return balance >= amount;
 }
 
 export function hasEnoughAllowance(
-  ctx: ContextGeneralString,
   params: ActionParam[],
   event: EventObject,
 ): boolean {
@@ -60,17 +57,16 @@ export function hasEnoughAllowance(
         return true;
     }
     const caller = wasmxwrap.getCaller();
-    const allowance = getAllowance(ctx, owner, caller);
+    const allowance = getAllowance(owner, caller);
     return allowance >= amount;
 }
 
 export function getBalance(
-    ctx: ContextGeneralString,
     addr: string,
 ): i64 {
     const key = getBalanceKey(addr);
-    if (ctx.has(key)) {
-        const balancestr = ctx.get(key);
+    const balancestr = storage.getContextValue(key);
+    if (balancestr) {
         const balance = parseInt(balancestr);
         return i64(balance);
     }
@@ -78,23 +74,20 @@ export function getBalance(
 }
 
 export function setBalance(
-    ctx: ContextGeneralString,
     addr: string,
     amount: i64,
-): ContextGeneralString {
+): void {
     const key = getBalanceKey(addr);
-    ctx.set(key, amount.toString());
-    return ctx;
+    storage.setContextValue(key, amount.toString());
 }
 
 export function getAllowance(
-    ctx: ContextGeneralString,
     owner: string,
     spender: string,
 ): i64 {
     const key = getAllowanceKey(owner, spender);
-    if (ctx.has(key)) {
-        const allowancestr = ctx.get(key);
+    const allowancestr = storage.getContextValue(key);
+    if (allowancestr) {
         const allowance = parseInt(allowancestr);
         return i64(allowance);
     }
@@ -102,14 +95,13 @@ export function getAllowance(
 }
 
 export function setAllowance(
-    ctx: ContextGeneralString,
     owner: string,
     spender: string,
     amount: i64,
-): ContextGeneralString {
+): void {
     const key = getAllowanceKey(owner, spender);
-    ctx.set(key, amount.toString());
-    return ctx;
+    storage.setContextValue(key, amount.toString());
+    return;
 }
 
 export function getBalanceKey(addr: string): string {
@@ -121,10 +113,9 @@ export function getAllowanceKey(owner: string, spender: string): string {
 }
 
 export function mint(
-    ctx: ContextGeneralString,
     params: ActionParam[],
     event: EventObject,
-): ContextGeneralString {
+): void {
     let addr: string = "";
     let amount: i64 = 0;
     for (let i = 0; i < event.params.length; i++) {
@@ -141,18 +132,17 @@ export function mint(
         revert("mint event empty address");
     }
     if (amount === 0) {
-        return ctx;
+        return;
     }
-    let balance = getBalance(ctx, addr);
+    let balance = getBalance(addr);
     balance += i64(amount);
-    return setBalance(ctx, addr, balance);
+    return setBalance(addr, balance);
 }
 
 export function move(
-    ctx: ContextGeneralString,
     params: ActionParam[],
     event: EventObject,
-): ContextGeneralString {
+): void {
     // console.log("--move--" + event.type + "--" + event.params.length.toString());
     // console.log("--move--" + params.length.toString());
 
@@ -180,22 +170,21 @@ export function move(
         revert("move event empty to address");
     }
     if (amount === 0) {
-        return ctx;
+        return;
     }
     // console.log("--move--" + from + "-" + to + "-" + amount.toString());
-    let balanceFrom = getBalance(ctx, from);
-    let balanceTo = getBalance(ctx, to);
+    let balanceFrom = getBalance(from);
+    let balanceTo = getBalance(to);
     balanceFrom -= i64(amount);
     balanceTo += i64(amount);
-    ctx = setBalance(ctx, from, balanceFrom);
-    return setBalance(ctx, to, balanceTo);
+    setBalance(from, balanceFrom);
+    return setBalance(to, balanceTo);
 }
 
 export function approve(
-    ctx: ContextGeneralString,
     params: ActionParam[],
     event: EventObject,
-): ContextGeneralString {
+): void {
     // console.log("--approve--" + event.type + "--" + event.params.length.toString());
     // console.log("--approve--" + params.length.toString());
 
@@ -216,19 +205,18 @@ export function approve(
     }
     // console.log("--approve--" + spender + "-" + amount.toString());
     if (amount === 0) {
-        return ctx;
+        return;
     }
     const owner = wasmxwrap.getCaller();
-    let allowance = getAllowance(ctx, owner, spender);
+    let allowance = getAllowance(owner, spender);
     allowance += amount;
-    return setAllowance(ctx, owner, spender, allowance);
+    return setAllowance(owner, spender, allowance);
 }
 
 export function logTransfer(
-    ctx: ContextGeneralString,
     params: ActionParam[],
     event: EventObject,
-): ContextGeneralString {
+): void {
     let from: string = "";
     let to: string = "";
     let amount: i64 = 0;
@@ -253,11 +241,10 @@ export function logTransfer(
         revert("move event empty to address");
     }
     if (amount === 0) {
-        return ctx;
+        return;
     }
     const topic1 = hexToUint8Array(from);
     const topic2 = hexToUint8Array(to);
     const topic3 = hexToUint8Array(amount.toString(16));
     wasmxwrap.log_fsm(new Uint8Array(0), [topic1, topic2, topic3]);
-    return ctx;
 }

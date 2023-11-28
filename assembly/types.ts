@@ -8,6 +8,11 @@ export enum InterpreterStatus {
   Stopped = 2
 }
 
+export var StatusMap = new Map<string, InterpreterStatus>();
+StatusMap.set("0", InterpreterStatus.NotStarted);
+StatusMap.set("1", InterpreterStatus.Running);
+StatusMap.set("2", InterpreterStatus.Stopped);
+
 export interface EventObject {
   type: string;
   params: ActionParam[];
@@ -98,7 +103,7 @@ export namespace StateMachine {
     target: string;
     actions: Array<ActionObject>;
     guard: string;
-    cond: ((context: ContextGeneralString, event: EventObject) => boolean) | null;
+    cond: ((event: EventObject) => boolean) | null;
     // TODO meta {}
   }
 
@@ -109,15 +114,9 @@ export namespace StateMachine {
     // matches: (value: string) => (stateValue: string) => boolean;
   }
 
-  export interface Config {
+  export interface Machine {
     id: string;
     states: States;
-  }
-
-  export interface Machine {
-    id: i32;
-    config: StateMachine.Config;
-    initialState: State;
     transition(
       state: State,
       event: EventObject
@@ -133,12 +132,9 @@ export namespace StateMachine {
   export interface Service {
     send(event: EventObject): void;
     subscribe(listener: StateListener): UnsubscribeReturnValue;
-    start(
-      initialState: string | null,
-    ): Service;
+    start(): Service;
     stop (): Service;
     readonly status: InterpreterStatus;
-    readonly state: State;
   }
 
   // export type Assigner = (
@@ -276,6 +272,33 @@ export class StateClassExternal {
     this.actions = actions;
     this.changed = changed;
   }
+
+  toInternal(): State {
+    const stateactions: Array<StateMachine.ActionObject> = [];
+    for (let i = 0; i < this.actions.length; i++) {
+        const act = this.actions[i];
+        stateactions.push(new ActionObject(act.type, act.params, act.event));
+    }
+    return new State(this.value, stateactions, this.changed);
+  }
+
+  static fromInternal(state: State): StateClassExternal {
+    const iniactions: Array<ActionObject> = [];
+    for (let i = 0; i < state.actions.length; i++) {
+        const act = state.actions[i];
+        const _ev = act.event;
+        let ev: EventClassExternal | null = null;
+        if (_ev !== null) {
+            ev = new EventClassExternal(_ev.type, _ev.params);
+        }
+        iniactions.push(new ActionObject(act.type, act.params, ev));
+    }
+    return new StateClassExternal(
+        state.value,
+        iniactions,
+        state.changed,
+    );
+  }
 }
 
 // @ts-ignore
@@ -322,13 +345,13 @@ export class Transition implements StateMachine.Transition{
   target: string;
   actions: Array<StateMachine.ActionObject>;
   guard: string;
-  cond: ((context: ContextGeneralString, event: EventObject) => boolean) | null;
+  cond: ((event: EventObject) => boolean) | null;
 
   constructor(
     target: string,
     actions: Array<StateMachine.ActionObject>,
     guard: string,
-    cond: ((context: ContextGeneralString, event: EventObject) => boolean) | null,
+    cond: ((event: EventObject) => boolean) | null,
   ) {
     this.target = target;
     this.actions = actions;
@@ -358,19 +381,6 @@ export class TransitionExternal {
     this.actions = actions;
     this.guard = guard;
     this.cond = cond;
-  }
-}
-
-export class Config implements StateMachine.Config{
-  id: string;
-  states: States;
-
-  constructor(
-    id: string,
-    states: States,
-  ) {
-    this.id = id;
-    this.states = states;
   }
 }
 
@@ -579,41 +589,6 @@ export class ContextParamRaw {
   constructor(key: ArrayBuffer, value: ArrayBuffer) {
     this.key = key;
     this.value = value;
-  }
-}
-
-// @ts-ignore
-@serializable
-export class ConfigExternal {
-  id: string;
-  states: Array<StateInfoClassExternal>;
-
-  constructor(
-    id: string,
-    states: Array<StateInfoClassExternal>,
-  ) {
-    this.id = id;
-    this.states = states;
-  }
-
-  static fromInternal(configInternal: StateMachine.Config): ConfigExternal {
-    const states = StateInfoClassExternal.fromInternalStatesMap(configInternal.states);
-
-    const config = new ConfigExternal(
-      configInternal.id,
-      states,
-    );
-
-    // machine.initialState;
-    return new ConfigExternal(config.id, states);
-  }
-
-  toInternal(): Config {
-    const states = StateInfoClassExternal.toInternalFromArray(this.states);
-    return new Config(
-        this.id,
-        states,
-    );
   }
 }
 
