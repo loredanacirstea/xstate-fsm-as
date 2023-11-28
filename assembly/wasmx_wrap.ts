@@ -6,14 +6,24 @@ import {
     CallResponse,
     ContextParam,
 } from './types';
-import { hexToU8, uint8ArrayToHex, hexToUint8Array } from "./utils";
+import { hexToU8, uint8ArrayToHex, hexToUint8Array, parseUint8ArrayToI32BigEndian } from "./utils";
 import { MachineExternal } from './machine';
+
+export class InterpreterCallData {
+    config: MachineExternal;
+    calldata: CallData;
+    constructor(config: MachineExternal, calldata: CallData) {
+        this.config = config;
+        this.calldata = calldata;
+    }
+}
 
 // @ts-ignore
 @serializable
 export class CallData {
     // TODO - this should only be done in the interpreter storage; to remove
     // create: ConfigExternal | null = null;
+    instantiate: CallDataInstantiate | null = null;
     getCurrentState: CallDataGetCurrentState | null = null;
     getContextValue: CallDataGetContextValue | null = null;
     run: CallDataRun | null = null;
@@ -22,11 +32,9 @@ export class CallData {
 // @ts-ignore
 @serializable
 export class CallDataInstantiate {
-    config: MachineExternal;
     initialState: string;
     params: Array<ContextParam>;
-    constructor(config: MachineExternal, state: string, params: Array<ContextParam>) {
-        this.config = config;
+    constructor(state: string, params: Array<ContextParam>) {
         this.initialState = state;
         this.params = params;
     }
@@ -48,10 +56,8 @@ export class CallDataGetContextValue {
 // @ts-ignore
 @serializable
 export class CallDataRun {
-    config: MachineExternal;
     event: EventClassExternal;
-    constructor(config: MachineExternal, event: EventClassExternal) {
-        this.config = config;
+    constructor(event: EventClassExternal) {
         this.event = event;
     }
 }
@@ -68,17 +74,23 @@ export class WasmxLog {
     }
 }
 
-export function getCallDataWrap(): CallData {
-    const calldStr = String.UTF8.decode(wasmx.getCallData())
-    console.log("--getCallDataWrap--" + calldStr);
-    const calld = JSON.parse<CallData>(calldStr);
-    return calld;
+export function getCallDataWrap(): InterpreterCallData {
+    // configBz length + configBz + calldata length + calldata
+    const calldraw = wasmx.getCallData();
+    const configlenraw = calldraw.slice(0, 32);
+    const configlen = parseUint8ArrayToI32BigEndian(Uint8Array.wrap(configlenraw.slice(28, 32)))
+    const configBz = calldraw.slice(32, 32 + configlen)
+    const calldlenraw = calldraw.slice(32 + configlen, 64 + configlen)
+    const calldlen = parseUint8ArrayToI32BigEndian(Uint8Array.wrap(calldlenraw.slice(28, 32)))
+    const calldBz = calldraw.slice(64 + configlen, 64 + configlen + calldlen)
+
+    const config = JSON.parse<MachineExternal>(String.UTF8.decode(configBz));
+    const calldata = JSON.parse<CallData>(String.UTF8.decode(calldBz));
+    return new InterpreterCallData(config, calldata);
 }
 
 export function getCaller(): string {
-    // console.log("--getCaller--")
     const callerbuf = wasmx.getCaller();
-    // console.log("--callerbuf-- " + callerbuf.byteLength.toString());
     return uint8ArrayToHex(Uint8Array.wrap(callerbuf));
 }
 

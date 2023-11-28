@@ -1,11 +1,8 @@
 import { JSON } from "json-as/assembly";
-import { decode as decodeBase64 } from "as-base64/assembly";
 import {
   eventual as _eventual,
   instantiate as _instantiate,
   runInternal,
-  ServiceExternal,
-  findStateInfo,
 } from './machine';
 import * as wasmx from './wasmx';
 import * as wasmxwrap from './wasmx_wrap';
@@ -21,19 +18,21 @@ import {
 
 export function wasmx_env_2(): void {}
 
-export function instantiate(): void {
-  const calldStr = String.UTF8.decode(wasmx.getCallData())
-  const calld = JSON.parse<wasmxwrap.CallDataInstantiate>(calldStr);
-  _instantiate(calld.config, calld.initialState, calld.params);
-}
+export function instantiate(): void {}
 
 export function main(): u8[] {
     let result: ArrayBuffer;
-    const calldata = wasmxwrap.getCallDataWrap();
+    const icalld = wasmxwrap.getCallDataWrap();
+    const calldata = icalld.calldata;
+    const config = icalld.config;
     if (calldata.run !== null) {
       const event = calldata.run!.event;
       const _event = new EventClass(event.type, event.params);
-      result = runInternal(calldata.run!.config, _event);
+      result = runInternal(config, _event);
+    } else if (calldata.instantiate !== null) {
+      const calld = calldata.instantiate!;
+      _instantiate(config, calld.initialState, calld.params);
+      result = new ArrayBuffer(0)
     } else if (calldata.getCurrentState !== null) {
       const state = getCurrentState();
       result = String.UTF8.encode(state.value);
