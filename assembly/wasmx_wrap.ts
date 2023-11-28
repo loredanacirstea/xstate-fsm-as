@@ -3,12 +3,12 @@ import * as wasmx from './wasmx';
 import {
     ConfigExternal,
     EventClassExternal,
-    EventObject,
-    Typestate,
     CallRequest,
     CallResponse,
+    ContextParam,
 } from './types';
 import { hexToU8, uint8ArrayToHex, hexToUint8Array } from "./utils";
+import { ServiceExternal } from './machine';
 
 // @ts-ignore
 @serializable
@@ -18,6 +18,19 @@ export class CallData {
     getCurrentState: CallDataGetCurrentState | null = null;
     getContextValue: CallDataGetContextValue | null = null;
     run: CallDataRun | null = null;
+}
+
+// @ts-ignore
+@serializable
+export class CallDataInstantiate {
+    config: ConfigExternal;
+    state: string;
+    params: Array<ContextParam>;
+    constructor(config: ConfigExternal, state: string, params: Array<ContextParam>) {
+        this.config = config;
+        this.state = state;
+        this.params = params;
+    }
 }
 
 // @ts-ignore

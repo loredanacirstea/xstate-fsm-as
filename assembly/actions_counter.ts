@@ -1,6 +1,4 @@
 import {
-  EventObject,
-  Typestate,
   ActionParam,
   ContextGeneralString,
 } from './types';

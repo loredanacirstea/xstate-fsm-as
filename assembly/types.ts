@@ -8,17 +8,6 @@ export enum InterpreterStatus {
   Stopped = 2
 }
 
-// @ts-ignore
-@serializable
-export class CallDataInstantiate {
-    state: string;
-    params: Array<ContextParam>;
-    constructor(state: string, params: Array<ContextParam>) {
-        this.state = state;
-        this.params = params;
-    }
-}
-
 export interface EventObject {
   type: string;
   params: ActionParam[];
@@ -115,7 +104,6 @@ export namespace StateMachine {
 
   export interface State {
     value: string;
-    context: ContextGeneralString;
     actions: Array<ActionObject>;
     changed: boolean;
     // matches: (value: string) => (stateValue: string) => boolean;
@@ -123,8 +111,6 @@ export namespace StateMachine {
 
   export interface Config {
     id: string;
-    initial: string;
-    context: ContextGeneralString;
     states: States;
   }
 
@@ -179,16 +165,13 @@ export interface Typestate {
 
 export class HandledActions {
   actions: Array<StateMachine.ActionObject> = [];
-  ctx: Map<string,string> = new Map<string,string>();
   assigned: boolean = false;
 
   constructor(
     actions: Array<StateMachine.ActionObject>,
-    ctx: ContextGeneralString,
     assigned: boolean
   ) {
     this.actions = actions;
-    this.ctx = ctx;
     this.assigned = assigned;
   }
 }
@@ -240,20 +223,17 @@ export class RaiseAction extends ActionObject{
 
 export class State implements StateMachine.State {
   value: string;
-  context: ContextGeneralString;
   actions: Array<StateMachine.ActionObject>;
   changed: boolean;
   // matches: (value: string) => (stateValue: string) => boolean;
 
   constructor(
     value: string,
-    context: ContextGeneralString,
     actions: Array<StateMachine.ActionObject>,
     changed: boolean,
     // matches: (value: string) => (stateValue: string) => boolean,
   ) {
     this.value = value;
-    this.context = context;
     this.actions = actions;
     this.changed = changed;
     // this.matches = matches;
@@ -262,20 +242,17 @@ export class State implements StateMachine.State {
 
 export class StateClass implements StateMachine.State {
   value: string;
-  context: ContextGeneralString;
   actions: Array<StateMachine.ActionObject>;
   changed: boolean;
   // matches: (value: string) => (stateValue: string) => boolean;
 
   constructor(
     value: string,
-    context: ContextGeneralString,
     actions: Array<StateMachine.ActionObject>,
     changed: boolean,
     // matches: (value: string) => (stateValue: string) => boolean,
   ) {
     this.value = value;
-    this.context = context;
     this.actions = actions;
     this.changed = changed;
     // this.matches = matches;
@@ -286,19 +263,16 @@ export class StateClass implements StateMachine.State {
 @serializable
 export class StateClassExternal {
   value: string;
-  context: Array<ContextParam>;
   actions: Array<ActionObject>;
   changed: boolean;
   // matches: (value: string) => (stateValue: string) => boolean;
 
   constructor(
     value: string,
-    context: Array<ContextParam>,
     actions: Array<ActionObject>,
     changed: boolean,
   ) {
     this.value = value;
-    this.context = context;
     this.actions = actions;
     this.changed = changed;
   }
@@ -389,19 +363,13 @@ export class TransitionExternal {
 
 export class Config implements StateMachine.Config{
   id: string;
-  initial: string;
-  context: ContextGeneralString;
   states: States;
 
   constructor(
     id: string,
-    initial: string,
-    context: ContextGeneralString,
     states: States,
   ) {
     this.id = id;
-    this.initial = initial;
-    this.context = context;
     this.states = states;
   }
 }
@@ -627,17 +595,35 @@ export class ConfigExternal {
     this.id = id;
     this.states = states;
   }
+
+  static fromInternal(configInternal: StateMachine.Config): ConfigExternal {
+    const states = StateInfoClassExternal.fromInternalStatesMap(configInternal.states);
+
+    const config = new ConfigExternal(
+      configInternal.id,
+      states,
+    );
+
+    // machine.initialState;
+    return new ConfigExternal(config.id, states);
+  }
+
+  toInternal(): Config {
+    const states = StateInfoClassExternal.toInternalFromArray(this.states);
+    return new Config(
+        this.id,
+        states,
+    );
+  }
 }
 
 // @ts-ignore
 @serializable
 export class TimerArgs {
   delay: string;
-  serviceId: i32;
   state: string;
-  constructor(delay: string, serviceId: i32, state: string) {
+  constructor(delay: string, state: string) {
     this.delay = delay;
-    this.serviceId = serviceId;
     this.state = state;
   }
 }

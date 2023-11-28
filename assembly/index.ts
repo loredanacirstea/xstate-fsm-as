@@ -1,39 +1,36 @@
 import { JSON } from "json-as/assembly";
-import { encode as encodeBase64, decode as decodeBase64 } from "as-base64/assembly";
+import { decode as decodeBase64 } from "as-base64/assembly";
 import {
   create as _create,
   getCurrentState as _getCurrentState,
   getContextValue as _getContextValue,
-  run as _run,
   eventual as _eventual,
   runInternal,
   createInternal,
   getContextValueInternal,
   storeContextParams,
+  Service,
+  ServiceExternal,
 } from './machine';
 import * as wasmx from './wasmx';
 import * as wasmxwrap from './wasmx_wrap';
 import {arrayBufferToU8Array, parseUint8ArrayToI32BigEndian} from './utils';
 import {
-  ContextGeneral,
-  EventObject,
-  Typestate,
   EventClass,
-  ConfigExternal,
   TimerArgs,
-  EventualArgs,
-  ContextParam,
-  CallDataInstantiate,
+  InterpreterStatus,
 } from './types';
-import * as data from './data';
 
 export function wasmx_env_2(): void {}
 
 export function instantiate(): void {
   const calldStr = String.UTF8.decode(wasmx.getCallData())
-  const calld = JSON.parse<CallDataInstantiate>(calldStr);
+  const calld = JSON.parse<wasmxwrap.CallDataInstantiate>(calldStr);
   storeContextParams(calld.params);
   wasmx.storageStore(String.UTF8.encode("state"), decodeBase64(calld.state));
+  wasmxwrap.sstore("interpreter_status", InterpreterStatus.NotStarted.toString());
+  const service = new ServiceExternal(calld.config , InterpreterStatus.NotStarted).toInternal();
+  service.start();
 }
 
 export function main(): u8[] {
@@ -42,13 +39,13 @@ export function main(): u8[] {
     if (calldata.run !== null) {
       const event = calldata.run!.event;
       const _event = new EventClass(event.type, event.params);
-      result = runInternal(calldata.run!.id, _event);
+      result = runInternal(calldata.run!.config, _event);
     } else if (calldata.create !== null) {
-      result = createInternal(calldata.create!, null);
+      result = createInternal(calldata.create!);
     } else if (calldata.getCurrentState !== null) {
-      result = getCurrentState(calldata.getCurrentState!.id);
+      result = getCurrentState();
     } else if (calldata.getContextValue !== null) {
-      result = getContextValueInternal(calldata.getContextValue!.id, calldata.getContextValue!.key);
+      result = getContextValueInternal(calldata.getContextValue!.key);
     } else {
       wasmx.revert(String.UTF8.encode("invalid function call data"));
       throw new Error("invalid function call data");
@@ -69,25 +66,11 @@ export function eventual(): void {
   _eventual(intervalId, _args);
 }
 
-export function create(
-  _fsmConfig: ArrayBuffer,
-  _implementations: ArrayBuffer,
-): ArrayBuffer {
-  return _create(_fsmConfig, _implementations);
+export function getCurrentState(): ArrayBuffer {
+  return _getCurrentState();
 }
 
-export function run(
-  id: i32,
-  eventNameBuf: ArrayBuffer,
-): void {
-  return _run(id, eventNameBuf);
-}
-
-export function getCurrentState(id: i32): ArrayBuffer {
-  return _getCurrentState(id);
-}
-
-export function getContextValue(id: i32, keyBuf: ArrayBuffer): ArrayBuffer {
-  return _getContextValue(id, keyBuf);
+export function getContextValue(keyBuf: ArrayBuffer): ArrayBuffer {
+  return _getContextValue(keyBuf);
 }
 

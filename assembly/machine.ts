@@ -4,19 +4,13 @@ import * as wasmxwrap from './wasmx_wrap';
 import * as wasmx from './wasmx';
 
 import {
-  // ContextFrom,
-  // EventFrom,
   EventObject,
   InitEvent,
   InterpreterStatus,
-  // MachineImplementationsFrom,
-  // ServiceFrom,
-  // StateFrom,
   StateMachine,
   Typestate,
   HandledActions,
   UnsubscribeReturnValue,
-  ContextGeneral,
   ContextGeneralString,
   ActionObject,
   State,
@@ -24,42 +18,27 @@ import {
   ConfigExternal,
   States,
   StateInfo,
-  StateInfoClass,
-  StateInfoEvents,
-  Transition,
   EventClass,
   ActionParam,
   ContextParam,
   StateClass,
   StateClassExternal,
   StateInfoClassExternal,
-  TransitionExternal,
   EventClassExternal,
   RaiseActionType,
   TimerArgs,
   CallRequest,
-  // ActionMap,
 } from './types';
 import { hexToUint8Array, revert } from "./utils";
 import * as actionsCounter from "./actions_counter";
 import * as actionsErc20 from "./actions_erc20";
 import * as actionsRaft from "./actions_raft";
 
-export {
-  StateMachine,
-  EventObject,
-  InterpreterStatus,
-  Typestate,
-  // MachineImplementationsFrom,
-  // StateFrom,
-  // ServiceFrom,
-  // EventFrom,
-  // ContextFrom,
-};
-
 const INIT_EVENT = new InitEvent();
 const ASSIGN_ACTION: StateMachine.AssignAction = 'xstate.assign';
 const WILDCARD = '*';
+const STORAGEKEY_STATE = "state"
+const STORAGEKEY_CTX = "context_"
 
 export function storeContextParams(params: Array<ContextParam>): void {
   for (let i = 0; i < params.length; i++) {
@@ -73,18 +52,15 @@ export function storeBase64(key: string, value: string): void {
   wasmx.storageStore(keybuf, valuebuf);
 }
 
-function createUnchangedState(value: string, context: ContextGeneralString): StateMachine.State {
-  return new State(value, context, [], false);
+function createUnchangedState(value: string): StateMachine.State {
+  return new State(value, [], false);
   // matches: createMatcher(value)
 }
 
 function handleActions(
   actions: Array<StateMachine.ActionObject>,
-  context: ContextGeneralString,
   eventObject: EventObject
 ): HandledActions {
-  // console.log("--handleActions--ctx-" + context.keys().join(","))
-  let nextContext = context;
   let assigned = false;
   const nonAssignActions: StateMachine.ActionObject[] = [];
 
@@ -93,8 +69,6 @@ function handleActions(
     console.log("* execute action: " + action.type);
     if (action.type === ASSIGN_ACTION) {
       assigned = true;
-      let tmpContext: ContextGeneralString = mergeMap<string>(nextContext, new Map());
-      // console.log("--handleActions--tmpContext-" + tmpContext.keys().join(","))
 
       // const aassign = action.assignment;
 
@@ -117,7 +91,6 @@ function handleActions(
       //   // });
       // }
 
-      nextContext = tmpContext;
       // return false;
       continue;
     }
@@ -127,7 +100,7 @@ function handleActions(
   // console.log("--handleActions--nextContext-" + nextContext.keys().join(","))
 
   // return {actions: nonAssignActions, ctx: nextContext, assigned};
-  return new HandledActions(nonAssignActions, nextContext, assigned);
+  return new HandledActions(nonAssignActions, assigned);
 }
 
 function executeGuard(
@@ -137,18 +110,16 @@ function executeGuard(
     event: EventObject,
 ): boolean {
     if (guard === "isAdmin") return isAdmin(id, ctx, []);
-    if (guard === "hasEnoughBalance") return actionsErc20.hasEnoughBalance(id, ctx, [], event);
-    if (guard === "hasEnoughAllowance") return actionsErc20.hasEnoughAllowance(id, ctx, [], event);
+    if (guard === "hasEnoughBalance") return actionsErc20.hasEnoughBalance(ctx, [], event);
+    if (guard === "hasEnoughAllowance") return actionsErc20.hasEnoughAllowance(ctx, [], event);
+
+    // TODO processExternalCall
 
     return true;
 }
 
-function toStateFromString(state: string, ctx: ContextGeneralString): StateMachine.State {
-  return { value: state, context: ctx };
-}
-
 function _createMachine(
-    id: i32,
+  id: i32,
   fsmConfig: Config,
 ): Machine {
   // const entries = fsmConfig.states.get(fsmConfig.initial).entry;
@@ -169,11 +140,9 @@ function _createMachine(
     // }
     // ),
     iniactions,
-    fsmConfig.context,
     INIT_EVENT as EventObject
   );
   const initialActions = res.actions;
-  const initialContext = res.ctx;
 
   // const initialState: StateMachine.State = {
   //   value: fsmConfig.initial,
@@ -182,7 +151,7 @@ function _createMachine(
   //   matches: createMatcher(fsmConfig.initial),
   //   changed: false,
   // }
-  const initialState = new State(fsmConfig.initial, initialContext, initialActions, false);
+  const initialState = new State(fsmConfig.initial, initialActions, false);
 
   const machine = new Machine(id, fsmConfig, initialState)
 
@@ -202,14 +171,13 @@ function _createMachine(
 
 function executeStateActions(
     service: Service,
-    id: i32,
     state: StateMachine.State,
     event: EventObject
 ): void {
   console.log("* executeStateActions: ")
   for (let i = 0; i < state.actions.length; i++) {
     const action = state.actions[i];
-    executeStateAction(service, id, state, event, action);
+    executeStateAction(service, state, event, action);
   }
   console.log("* executeStateActions after actions " + state.value)
 
@@ -227,7 +195,7 @@ function executeStateActions(
   console.log("* setting timed actions for " + state.value);
   console.log("* setting timed actions... " + delayKeys.join(","));
 
-  saveService(service.id, service);
+  saveService(service);
 
   for (let i = 0; i < delayKeys.length; i++) {
     // delay is in milliseconds
@@ -253,7 +221,6 @@ function executeStateActions(
 
 function executeStateAction(
     service: Service,
-    id: i32,
     state: StateMachine.State,
     event: EventObject,
     action:  StateMachine.ActionObject,
@@ -272,63 +239,51 @@ function executeStateAction(
         return;
     }
     if (actionType === "mint") {
-        const newctx = actionsErc20.mint(id, state.context, action.params, event);
-        state.context = newctx;
+        const newctx = actionsErc20.mint(state.context, action.params, event);
         return;
     }
     if (actionType === "move") {
-        const newctx = actionsErc20.move(id, state.context, action.params, event);
-        state.context = newctx;
+        const newctx = actionsErc20.move(state.context, action.params, event);
         return;
     }
     if (actionType === "approve") {
-        const newctx = actionsErc20.approve(id, state.context, action.params, event);
-        state.context = newctx;
+        const newctx = actionsErc20.approve(state.context, action.params, event);
         return;
     }
     if (actionType === "sendRequest") {
-      const newctx = sendRequest(id, state.context, action.params, event);
-      state.context = newctx;
+      const newctx = sendRequest(state.context, action.params, event);
       return;
     }
     if (actionType === "logTransfer") {
-        const newctx = actionsErc20.logTransfer(id, state.context, action.params, event);
-        state.context = newctx;
+        const newctx = actionsErc20.logTransfer(state.context, action.params, event);
         return;
     }
     if (actionType === "increment") {
       const newctx = actionsCounter.increment(state.context, action.params);
-      state.context = newctx;
       return;
     }
     if (actionType === "log") {
-        const newctx = log(state.context, action.params);
-        state.context = newctx;
+        const newctx = log(action.params);
         return
     }
     if (actionType === "processAppendEntries") {
-      const newctx = actionsRaft.processAppendEntries(id, state.context, action.params, event);
-      state.context = newctx;
+      const newctx = actionsRaft.processAppendEntries(action.params, event);
       return;
     }
     if (actionType === "sendHeartbeatResponse") {
-      const newctx = actionsRaft.sendHeartbeatResponse(id, state.context, action.params, event);
-      state.context = newctx;
+      const newctx = actionsRaft.sendHeartbeatResponse(action.params, event);
       return;
     }
     if (actionType === "sendAppendEntries") {
-      const newctx = actionsRaft.sendAppendEntries(id, state.context, action.params, event);
-      state.context = newctx;
+      const newctx = actionsRaft.sendAppendEntries(action.params, event);
       return;
     }
     if (actionType === "sendNewTransactionResponse") {
-      const newctx = actionsRaft.sendNewTransactionResponse(id, state.context, action.params, event);
-      state.context = newctx;
+      const newctx = actionsRaft.sendNewTransactionResponse(action.params, event);
       return;
     }
     if (actionType === "appendLog") {
-      const newctx = actionsRaft.appendLog(id, state.context, action.params, event);
-      state.context = newctx;
+      const newctx = actionsRaft.appendLog(action.params, event);
       return;
     }
     // If action is not a local action, then it is an external action
@@ -356,10 +311,11 @@ function processExternalCall(
     return false;
   }
   // contract label => contractAddress
-  if (!state.context.has(parts[0])) {
+  const contractAddress = getContextValue(parts[0]);
+  if (contractAddress === "") {
     revert("contract label not found in context: " + parts[0]);
   }
-  const contractAddress = state.context.get(parts[0]);
+
   // TODO
   const calldata = ""
   const req = new CallRequest(contractAddress, calldata, false);
@@ -388,7 +344,7 @@ function log(
   for (let i = 0; i < params.length; i++) {
     const key = params[i].key;
     const message = params[i].value;
-    const value = ctx.get(key);
+    const value = getContextValue(key);
     console.log(`${key}: ${value} - ${message}`);
   }
   return ctx;
@@ -423,21 +379,15 @@ function sendRequest(
 }
 
 export class Service implements StateMachine.Service {
-  id: i32
   machine: StateMachine.Machine
-  state: StateMachine.State
   status: InterpreterStatus
   listeners: Set<StateMachine.StateListener>
 
   constructor(
-    id: i32,
     machine: StateMachine.Machine,
-    state: StateMachine.State | null,
     status: InterpreterStatus,
   ) {
-    this.id = id;
     this.machine = machine;
-    this.state = state || machine.initialState;
     this.status = status || InterpreterStatus.NotStarted;
     this.listeners = new Set<StateMachine.StateListener>();
   }
@@ -467,7 +417,7 @@ export class Service implements StateMachine.Service {
 
   start(): Service {
     this.status = InterpreterStatus.Running;
-    executeStateActions(this, this.id, this.state, INIT_EVENT);
+    executeStateActions(this, this.state, INIT_EVENT);
     this.send(INIT_EVENT);
     return this;
   }
@@ -482,32 +432,21 @@ export class Service implements StateMachine.Service {
 // @ts-ignore
 @serializable
 export class ServiceExternal {
-    id: i32
-  machine: MachineExternal
-  state: StateClassExternal
+  machine: ConfigExternal
   status: InterpreterStatus
   // TODO listeners can be addresses that should be announced about state changes
 
   constructor(
-    id: i32,
-    machine: MachineExternal,
-    state: StateClassExternal,
+    machine: ConfigExternal,
     status: InterpreterStatus,
   ) {
-    this.id = id;
     this.machine = machine;
-    this.state = state;
     this.status = status;
   }
 
   static fromInternal(service: Service): ServiceExternal {
-    const machine = MachineExternal.fromInternal(service.machine);
+    const machine = ConfigExternal.fromInternal(service.machine.config);
     const status = service.status;
-    const context: Array<ContextParam> = [];
-    const ctxKeys = service.state.context.keys();
-    for (let i = 0; i < ctxKeys.length; i++) {
-        context.push(new ContextParam(ctxKeys[i], service.state.context.get(ctxKeys[i])));
-    }
     const stateactions: Array<ActionObject> = [];
     for (let i = 0; i < service.state.actions.length; i++) {
         const act = service.state.actions[i];
@@ -520,130 +459,16 @@ export class ServiceExternal {
     }
     const state = new StateClassExternal(
         service.state.value,
-        context,
         stateactions,
         service.state.changed,
     );
-    return new ServiceExternal(service.id, machine, state, status);
+    return new ServiceExternal(machine, status);
   }
 
   toInternal(): Service {
-    // console.log("--service toInternal()--");
     const machine = this.machine.toInternal();
-    const context: ContextGeneralString = new Map<string, string>();
-    for (let i = 0; i < this.state.context.length; i++) {
-        const param = this.state.context[i];
-        context.set(param.key, param.value);
-    }
-    const stateactions: Array<StateMachine.ActionObject> = [];
-    for (let i = 0; i < this.state.actions.length; i++) {
-        const act = this.state.actions[i];
-        stateactions.push(new ActionObject(act.type, act.params, act.event));
-    }
-    const state = new StateClass(
-        this.state.value,
-        context,
-        stateactions,
-        this.state.changed,
-    )
     const status = this.status;
-    // console.log("--service toInternal()-END-");
-    return new Service(this.id, machine, state, status);
-  }
-}
-
-// @ts-ignore
-@serializable
-export class MachineExternal {
-    id: i32;
-  config: ConfigExternal;
-  initialState: StateClassExternal;
-//   options: Implementations // TODO remove
-
-  constructor(
-    id: i32,
-    config: ConfigExternal,
-    initialState: StateClassExternal,
-  ) {
-    this.id = id;
-    this.config = config;
-    this.initialState = initialState;
-  }
-
-  static fromInternal(machine: StateMachine.Machine): MachineExternal {
-    const ctx: Array<ContextParam> = [];
-    const octx = machine.config.context;
-    const octxKeys = octx.keys();
-    for (let i = 0; i < octxKeys.length; i++) {
-        ctx.push(new ContextParam(octxKeys[i], octx.get(octxKeys[i])));
-    }
-    const states = StateInfoClassExternal.fromInternalStatesMap(machine.config.states);
-
-    const config = new ConfigExternal(
-        machine.config.id,
-        machine.config.initial,
-        ctx,
-        states,
-    );
-    const context: Array<ContextParam> = [];
-    const ctxKeys = machine.initialState.context.keys();
-    for (let i = 0; i < ctxKeys.length; i++) {
-        context.push(new ContextParam(ctxKeys[i], machine.initialState.context.get(ctxKeys[i])));
-    }
-    const iniactions: Array<ActionObject> = [];
-    for (let i = 0; i < machine.initialState.actions.length; i++) {
-        const act = machine.initialState.actions[i];
-        const _ev = act.event;
-        let ev: EventClassExternal | null = null;
-        if (_ev !== null) {
-            ev = new EventClassExternal(_ev.type, _ev.params);
-        }
-        iniactions.push(new ActionObject(act.type, act.params, ev));
-    }
-
-    const initialState = new StateClassExternal(
-        machine.initialState.value,
-        context,
-        iniactions,
-        machine.initialState.changed,
-    );
-
-    // machine.initialState;
-    return new MachineExternal(machine.id, config, initialState);
-  }
-
-  toInternal(): Machine {
-    // console.log("-Machine toInternal--")
-    const context: ContextGeneralString = new Map<string,string>();
-    const ctxpairs = this.config.context;
-    for (let i = 0; i < ctxpairs.length; i++) {
-        context.set(ctxpairs[i].key, ctxpairs[i].value);
-    }
-    const states = StateInfoClassExternal.toInternalFromArray(this.config.states);
-    const config = new Config(
-        this.config.id,
-        this.config.initial,
-        context,
-        states,
-    )
-    const inictx: ContextGeneralString = new Map<string,string>();
-    const _inictx = this.initialState.context;
-    for (let i = 0; i < _inictx.length; i++) {
-        inictx.set(_inictx[i].key, _inictx[i].value);
-    }
-    const iniactions: Array<StateMachine.ActionObject> = [];
-    for (let i = 0; i < this.initialState.actions.length; i++) {
-        const act = this.initialState.actions[i];
-        iniactions.push(new ActionObject(act.type, act.params, act.event));
-    }
-    const initialState = new StateClass(
-        this.initialState.value,
-        inictx,
-        iniactions,
-        this.initialState.changed,
-    );
-    // console.log("-Machine toInternal-END-")
-    return new Machine(this.id, config, initialState);
+    return new Service(machine, status);
   }
 }
 
@@ -807,9 +632,10 @@ export class Machine implements StateMachine.Machine {
                                     found = true;
                                 }
                             }
-                            if (!found && context.has(value)) {
+                            const v = getContextValue(value);
+                            if (!found && v) {
                               // look in context
-                              act.event!.params[k].value = context.get(value);
+                              act.event!.params[k].value = v;
                             }
                         }
                     }
@@ -866,7 +692,7 @@ export class Machine implements StateMachine.Machine {
 
           console.log("* transition next target: " + resolvedTarget);
 
-          return new State(resolvedTarget, nextContext, nonAssignActions, target !== value || nonAssignActions.length > 0 || assigned);
+          return new State(resolvedTarget, nonAssignActions, target !== value || nonAssignActions.length > 0 || assigned);
           // matches: createMatcher(resolvedTarget)
         }
       }
@@ -882,7 +708,6 @@ export class Machine implements StateMachine.Machine {
   ): StateMachine.State {
     console.log("* applyTransition: " + transition.target);
     const value = state.value;
-    const context = state.context;
     const stateConfig = findStateInfo(this.config.states, value);
     if (!stateConfig) {
         const message = "state not found: " + value;
@@ -903,7 +728,7 @@ export class Machine implements StateMachine.Machine {
     for (let i = 0; i < transitions.length; i++) {
       const transition = transitions[i];
       if (transition === null) {
-        return createUnchangedState(value, context);
+        return createUnchangedState(value);
       }
       const target = transition.target;
       const actions = transition.actions || [];
@@ -978,9 +803,10 @@ export class Machine implements StateMachine.Machine {
                           //         found = true;
                           //     }
                           // }
-                          if (!found && context.has(value)) {
+                          const v = getContextValue(value);
+                          if (!found && v) {
                             // look in context
-                            act.event!.params[k].value = context.get(value);
+                            act.event!.params[k].value = v;
                           }
                       }
                   }
@@ -1079,7 +905,7 @@ export function createInternal(
 
   for (let i = 0; i < fsmConfigExternal.context.length; i++) {
     const param = fsmConfigExternal.context[i];
-    ctx.set(param.key, param.value);
+    setContextValue(param.key, param.value);
   }
 
   const fsmConfig = new Config(
@@ -1099,7 +925,7 @@ export function createInternal(
 
   // console.log("--_createMachine--end--")
 
-  const service = new Service(expectedId, machine, null , InterpreterStatus.NotStarted);
+  const service = new Service(machine, null , InterpreterStatus.NotStarted);
 
     // console.log("--service.start--start--")
 
@@ -1124,48 +950,33 @@ export function createInternal(
   return String.UTF8.encode(`{"id":${id}}`);
 }
 
-export function getCurrentState(id: i32): ArrayBuffer {
-  const service = loadServiceFromId(id);
-  // console.log("-getCurrentState-service-loaded-")
-  if (!service) {
-    revert("no service");
-  }
-  return String.UTF8.encode(service.state.value);
+export function getCurrentState(): string {
+  return wasmxwrap.sload(STORAGEKEY_STATE);
 }
 
-export function getContextValue(id: i32, keyBuf: ArrayBuffer): ArrayBuffer {
-  const key = String.UTF8.decode(keyBuf);
-  return getContextValueInternal(id, key);
+export function setCurrentState(value: ArrayBuffer): void {
+  return wasmx.storageStore(String.UTF8.encode(STORAGEKEY_STATE), value);
 }
 
-export function getContextValueInternal(id: i32, key: string): ArrayBuffer {
-    const service = loadServiceFromId(id);
-    if (!service) {
-        revert("no service");
-    }
-    const ctx = service.state.context;
-    if (!ctx) {
-        revert("no ctx");
-    }
-    // console.log("--getContext--" + ctx.keys().join(","));
-    if (ctx.has(key)) {
-        return String.UTF8.encode(ctx.get(key));
-    }
-    return new ArrayBuffer(0);
+export function getContextValue(key: string): string {
+  return String.UTF8.decode(getContextValueInternal(key));
 }
 
-export function run(
-  id: i32,
-  eventBuf: ArrayBuffer,
-): void {
-  const event = JSON.parse<EventClassExternal>(String.UTF8.decode(eventBuf));
-  const _event = new EventClass(event.type, event.params);
-  runInternal(id, _event);
+export function getContextValueInternal(key: string): ArrayBuffer {
+    return wasmx.storageLoad(String.UTF8.encode(STORAGEKEY_CTX + key));
 }
 
-export function runInternal(id: i32, event: EventClass): ArrayBuffer {
+export function setContextValue(key: string, value: string): void {
+  return setContextValueInternal(key, String.UTF8.encode(value));
+}
+
+export function setContextValueInternal(key: string, value: ArrayBuffer): void {
+  return wasmx.storageStore(String.UTF8.encode(STORAGEKEY_CTX + key), value);
+}
+
+export function runInternal(config: ConfigExternal, event: EventClass): ArrayBuffer {
     // console.log("--runInternal--" + id.toString() + "--" + event.type);
-    const service = loadServiceFromId(id);
+    const service = loadServiceFromConfig(config);
     if (!service) {
         revert("no service");
     }
@@ -1202,7 +1013,7 @@ export function saveService(id: i32, service: Service): void {
     wasmxwrap.storeService(id, data);
 }
 
-export function loadServiceFromId(id: i32): Service {
+export function loadServiceFromConfig(config: ConfigExternal): Service {
     const serviceData = wasmxwrap.loadService(id);
     const service = JSON.parse<ServiceExternal>(serviceData);
     return service.toInternal();
@@ -1254,23 +1065,21 @@ export function findStateInfoByPath(
     return state;
 }
 
-export function eventual(intervalId: i32, args: TimerArgs): void {
-  console.log("* eventual: " + args.serviceId.toString() + "--" + args.delay);
-  const service = loadServiceFromId(args.serviceId);
-  if (!service) {
-    revert("no service");
-  }
-  console.log("* eventual - finding state: " + service.state.value);
+export function eventual(config: ConfigExternal, intervalId: i32, args: TimerArgs): void {
+  console.log("* eventual: " + args.state + "--" + args.delay);
+  const service = loadServiceFromConfig(config);
+  const currentState = getCurrentState();
+  console.log("* eventual - finding state: " + currentState);
 
-  if (service.state.value !== args.state) {
+  if (currentState !== args.state) {
     // we are in the wrong state, so the interval must be stopped
     // wasmx.stopInterval(intervalId);
     return;
   }
 
-  const newstateconfig = findStateInfo(service.machine.config.states, service.state.value);
+  const newstateconfig = findStateInfo(service.machine.config.states, currentState);
   if (!newstateconfig) {
-    return revert("could not find state config for " + service.state.value);
+    return revert("could not find state config for " + currentState);
   }
   console.log("* eventual - finding after");
   const afterTimers = newstateconfig.after;
