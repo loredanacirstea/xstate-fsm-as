@@ -344,6 +344,7 @@ export class Service implements StateMachine.Service {
     let state = storage.getCurrentState();
     state = this.machine.transition(state, event);
     console.log("* posttransition state: " + state.value);
+    // Set new state before executing actions
     storage.setCurrentState(state);
     executeStateActions(this, state, event);
 
@@ -899,8 +900,8 @@ export function eventual(config: MachineExternal, intervalId: i32, args: TimerAr
   // just a copied transition
   let state = storage.getCurrentState();
   state = service.machine.applyTransition(state, transition);
+  // Set new state before executing actions
+  storage.setCurrentState(state);
   executeStateActions(service, state, new EventClass("", []));
   // TODO listeners?
-
-  storage.setCurrentState(state);
 }
