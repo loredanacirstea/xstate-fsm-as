@@ -69,6 +69,13 @@ export function wasmx(storageMap, env, logType = LOG.error) {
         return env.currentCall.sender;
     }
 
+    function getAddress() {
+        if (logType > 1) {
+            console.log('-host-getAddress', env.currentCall.contract);
+        }
+        return env.currentCall.contract;
+    }
+
     function getBalance(addrbuf) {
         const key = [...new Uint8Array(addrbuf)];
         if (logType > 1) {
@@ -102,6 +109,7 @@ export function wasmx(storageMap, env, logType = LOG.error) {
         getCallData,
         getEnv,
         getCaller,
+        getAddress,
         getBalance,
         log,
         grpcRequest,

@@ -1,4 +1,5 @@
 import { JSON } from "json-as/assembly";
+import { encode as encodeBase64, decode as decodeBase64 } from "as-base64/assembly";
 import * as wasmx from './wasmx';
 import {
     EventClassExternal,
@@ -95,11 +96,6 @@ export function getInterpreterCalldata(): Array<ArrayBuffer> {
     return [configBz, calldBz]
 }
 
-export function getCaller(): string {
-    const callerbuf = wasmx.getCaller();
-    return uint8ArrayToHex(Uint8Array.wrap(callerbuf));
-}
-
 export function sstore(key: string, value: string): void {
     wasmx.storageStore(String.UTF8.encode(key), String.UTF8.encode(value));
 }
@@ -124,8 +120,9 @@ export function log_fsm(
     wasmx.log(String.UTF8.encode(logstr));
 }
 
-export function grpcRequest(ip: string, data: string): string {
-    const req = String.UTF8.encode(`{"address":"${ip}","data":"${data}"}`);
+export function grpcRequest(ip: string, contract: Uint8Array, data: string): string {
+    const contractAddress = encodeBase64(contract);
+    const req = String.UTF8.encode(`{"ip_address":"${ip}","contract":"${contractAddress}","data":"${data}"}`);
     const result = wasmx.grpcRequest(req);
     console.log(String.UTF8.decode(result));
     return String.UTF8.decode(result);

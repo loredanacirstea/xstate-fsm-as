@@ -1,12 +1,13 @@
 import { JSON } from "json-as/assembly";
 import * as wasmxwrap from './wasmx_wrap';
+import * as wasmx from './wasmx';
 import * as storage from './storage';
 
 import {
   EventObject,
   ActionParam,
 } from './types';
-import { hexToUint8Array, revert } from "./utils";
+import { hexToUint8Array, revert, getAddressHex } from "./utils";
 
 export function hasEnoughBalance(
   params: ActionParam[],
@@ -56,7 +57,7 @@ export function hasEnoughAllowance(
     if (amount === 0) {
         return true;
     }
-    const caller = wasmxwrap.getCaller();
+    const caller = getAddressHex(wasmx.getCaller());
     const allowance = getAllowance(owner, caller);
     return allowance >= amount;
 }
@@ -207,7 +208,7 @@ export function approve(
     if (amount === 0) {
         return;
     }
-    const owner = wasmxwrap.getCaller();
+    const owner = getAddressHex(wasmx.getCaller());
     let allowance = getAllowance(owner, spender);
     allowance += amount;
     return setAllowance(owner, spender, allowance);

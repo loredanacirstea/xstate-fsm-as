@@ -11,6 +11,32 @@ import {
 import { hexToUint8Array, revert, parseInt32, parseInt64 } from "./utils";
 import { Block, LogEntry, Transaction, TransactionResponse, AppendEntry, AppendEntryResponse } from "./types_raft";
 
+export function setupNode(
+    params: ActionParam[],
+    event: EventObject,
+): void {
+    let currentNodeId: string = "";
+    let nodeIPs: string = "";
+    for (let i = 0; i < event.params.length; i++) {
+        if (event.params[i].key === CURRENT_NODE_ID) {
+            currentNodeId = event.params[i].value;
+            continue;
+        }
+        if (event.params[i].key === NODE_IPS) {
+            nodeIPs = event.params[i].value;
+            continue;
+        }
+    }
+    if (currentNodeId === "") {
+        revert("no currentNodeId found");
+    }
+    if (nodeIPs === "") {
+        revert("no nodeIPs found");
+    }
+    storage.setContextValue(CURRENT_NODE_ID, currentNodeId);
+    storage.setContextValue(NODE_IPS, nodeIPs);
+}
+
 export function processAppendEntries(
     params: ActionParam[],
     event: EventObject,
@@ -78,8 +104,10 @@ export function sendAppendEntry(
         getCommitIndex(),
     )
     const datastr = JSON.stringify<AppendEntry>(data);
-    const dataBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(datastr)))
-    const response = wasmxwrap.grpcRequest(nodeIp, dataBase64);
+    const dataBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(datastr)));
+    // we send the request to the same contract
+    const contract = wasmx.getAddress();
+    const response = wasmxwrap.grpcRequest(nodeIp, Uint8Array.wrap(contract), dataBase64);
     const resp = JSON.parse<AppendEntryResponse>(response);
     // TODO something with resp.term
     if (resp.success) {
@@ -129,7 +157,7 @@ export function getLogEntry(
     index: i64,
 ): string {
     const key = getLogEntryKey(index);
-    return wasmxwrap.sload(key);
+    return storage.getContextValue(key);
 }
 
 export function appendLogInternal(
@@ -166,12 +194,13 @@ export function setLogEntry(
     entry: string,
 ): void {
     const key = getLogEntryKey(index);
-    wasmxwrap.sstore(key, entry);
+    storage.setContextValue(key, entry);
 }
 
 export function getLogCount(): i64 {
     const key = getLogCountKey();
-    const valuestr = wasmxwrap.sload(key);
+    const valuestr = storage.getContextValue(key);
+    console.log("==getLogCount==" + key + "--" + valuestr);
     if (valuestr != "") {
         const value = parseInt(valuestr);
         return i64(value);
@@ -183,11 +212,11 @@ export function setLogCount(
     value: i64,
 ): void {
     const key = getLogCountKey();
-    wasmxwrap.sstore(key, value.toString());
+    storage.setContextValue(key, value.toString());
 }
 
 export function getLogEntryKey(index: i64): string {
-    return "logs_" + "_" + index.toString();
+    return "logs_" + index.toString();
 }
 
 export function getLogCountKey(): string {
@@ -265,5 +294,5 @@ function getNodeIPs(): Array<string> {
 }
 
 function setNextIndexArray(arr: Array<i64>): void {
-    wasmxwrap.sstore(NEXT_INDEX_ARRAY, JSON.stringify<Array<i64>>(arr));
+    storage.setContextValue(NEXT_INDEX_ARRAY, JSON.stringify<Array<i64>>(arr));
 }

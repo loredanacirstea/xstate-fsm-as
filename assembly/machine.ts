@@ -24,7 +24,7 @@ import {
   AssignAction,
   Transition,
 } from './types';
-import { hexToUint8Array, revert } from "./utils";
+import { hexToUint8Array, revert, getAddressHex } from "./utils";
 import * as storage from './storage';
 import * as actionsCounter from "./actions_counter";
 import * as actionsErc20 from "./actions_erc20";
@@ -41,7 +41,7 @@ export function instantiate(
 ): void {
   storage.storeContextParams(params);
   storage.setCurrentStatus(InterpreterStatus.NotStarted);
-  storage.storeOwner(wasmxwrap.getCaller());
+  storage.storeOwner(wasmx.getCaller());
 
   // TODO see if there are initial actions to perform (e.g. entry actions)
   // const stateConfig = findStateInfo(service.machine.states, initialState);
@@ -51,7 +51,8 @@ export function instantiate(
     INIT_EVENT as EventObject
   );
   const initialActions = res.actions;
-  storage.setCurrentState(new State(initialState, initialActions, false));
+  const newstate = new State(initialState, initialActions, false);
+  storage.setCurrentState(newstate);
 
   const service = new ServiceExternal(config , InterpreterStatus.NotStarted).toInternal();
   // TODO start endpoint?
@@ -217,6 +218,10 @@ function executeStateAction(
         log(action.params);
         return
     }
+    if (actionType === "setupNode") {
+      actionsRaft.setupNode(action.params, event);
+      return;
+    }
     if (actionType === "processAppendEntries") {
       actionsRaft.processAppendEntries(action.params, event);
       return;
@@ -280,9 +285,9 @@ function processExternalCall(
 function isAdmin(
   params: ActionParam[],
 ): boolean {
-  const caller = wasmxwrap.getCaller();
+  const caller = wasmx.getCaller();
   const owner = storage.loadOwner();
-  return caller === owner;
+  return getAddressHex(caller) === getAddressHex(owner);
 }
 
 function log(
@@ -318,7 +323,8 @@ function sendRequest(
   if (data === "") {
       revert("sendRequest empty data");
   }
-  wasmxwrap.grpcRequest(address, data);
+  const contract = wasmx.getCaller();
+  wasmxwrap.grpcRequest(address, Uint8Array.wrap(contract), data);
 }
 
 export class Service implements StateMachine.Service {
@@ -527,7 +533,7 @@ export class Machine implements StateMachine.Machine {
                         if (value.includes("()")) {
                             // TODO have a map with all provided functions and guards
                             if (value === "getCaller()") {
-                                act.event!.params[k].value = wasmxwrap.getCaller();
+                                act.event!.params[k].value = getAddressHex(wasmx.getCaller());
                                 found = true;
                             }
                         } else {
@@ -696,7 +702,7 @@ export class Machine implements StateMachine.Machine {
                       if (value.includes("()")) {
                           // TODO have a map with all provided functions and guards
                           if (value === "getCaller()") {
-                              act.event!.params[k].value = wasmxwrap.getCaller();
+                              act.event!.params[k].value = getAddressHex(wasmx.getCaller());
                               found = true;
                           }
                       } else {
@@ -868,14 +874,25 @@ export function findStateInfoByPath(
     return state;
 }
 
+// TODO use only absolute paths for states
+export function equalState(state1: string, state2: string): boolean {
+  // const config1 = findStateInfo(states, state1);
+  // const config2 = findStateInfo(states, state2);
+  const st1 = state1.split(".").pop();
+  const st2 = state2.split(".").pop();
+  return st1 === st2;
+}
+
 export function eventual(config: MachineExternal, intervalId: i32, args: TimerArgs): void {
   console.log("* eventual: " + args.state + "--" + args.delay);
   const service = loadServiceFromConfig(config);
   const currentState = storage.getCurrentState();
   console.log("* eventual - finding state: " + currentState.value);
+  const isEqual = equalState(currentState.value, args.state);
 
-  if (currentState.value !== args.state) {
+  if (!isEqual) {
     // we are in the wrong state, so the interval must be stopped
+    console.log("* eventual: we are in the wrong state");
     // wasmx.stopInterval(intervalId);
     return;
   }
@@ -888,7 +905,7 @@ export function eventual(config: MachineExternal, intervalId: i32, args: TimerAr
   const afterTimers = newstateconfig.after;
   if (afterTimers == null || !afterTimers.has(args.delay)) {
     // we are in the wrong state, so the interval must be stopped
-    wasmx.stopInterval(intervalId);
+    // wasmx.stopInterval(intervalId);
     return;
   }
   console.log("* execute delayed action... " + args.delay)

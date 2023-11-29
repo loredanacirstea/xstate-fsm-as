@@ -55,3 +55,7 @@ export function parseInt32(value: string): i32 {
 export function parseInt64(value: string): i64 {
     return i64(parseInt(value));
 }
+
+export function getAddressHex(addrbuf: ArrayBuffer): string {
+    return uint8ArrayToHex(Uint8Array.wrap(addrbuf));
+}

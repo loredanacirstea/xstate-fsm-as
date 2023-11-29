@@ -35,10 +35,12 @@ function runFnWrapped (storage = {}, env = {}) {
         ])
 
         const defaultSender = encodeToUtf8Array("sender");
+        const defaultContract = encodeToUtf8Array("contract");
         env = {
             ...env,
             currentCall: {
                 sender: defaultSender,
+                contract: defaultContract,
                 ...env.currentCall,
                 callData: calldata,
             }
@@ -269,9 +271,9 @@ async function runTests() {
     machine = {id: machineConfig.id, states: machineConfig.states};
     await runFn("instantiate", machine, {initialState: machineConfig.initial, context: machineConfig.context})
 
-    await runFnOwner("run", machine, {event: {type: "sendRequest", params: [{key: "address", value: "localhost"}, {key: "data", value: "hello"}]}});
+    await runFnOwner("run", machine, {event: {type: "sendRequest", params: [{key: "address", value: "localhost"}, {key: "data", value: "aGVsbG8="}]}});
 
-    // {run: {id: 0, event: {type: "sendRequest", params: [{key: "address", value: "%s"}, {key: "data", value: "hello"}]}
+    // {run: {id: 0, event: {type: "sendRequest", params: [{key: "address", value: "%s"}, {key: "data", value: "aGVsbG8="}]}
 
     // machine 7
     machineConfig = parseMachine(consensusSMTimerConfigOrig);
@@ -289,6 +291,9 @@ async function runTests() {
     machine = {id: machineConfig.id, states: machineConfig.states};
     await runFn("instantiate", machine, {initialState: machineConfig.initial, context: machineConfig.context})
     let txstr;
+
+    // [temp] setup values
+    await runFnOwner("run", machine, {event: {type: "setupNode", params: [{key: "currentNodeId", value: "0"},{key: "nodeIPs", value: "[\"0.0.0.0:8090\",\"0.0.0.0:8091\"]"}]}});
 
     txstr = JSON.stringify({termId: 1, leaderId: 0, prevLogIndex: 2, prevLogTerm: 0, entries: [{index: 2, termId: 1, leaderId: 0, data: ""}]})
     await runFnOwner("run", machine, {event: {type: "receiveHeartbeat", params: [{key: "entry", value: btoa(txstr)}]}});
@@ -312,10 +317,10 @@ async function runTests() {
     console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
     assert.strictEqual(decodeFromUtf8Array(currentState), "#RAFT-LogReplication.Leader.active");
 
-    // result = await runFn("getContextValue", machine, {key: "balance_4_" + uint8ArrayToHex(sender)});
-    // console.log("!!!!!getContextValue", decodeFromUtf8Array(result))
-    // currentState = decodeFromUtf8Array(result);
-    // assert.strictEqual(currentState, "20");
+    result = await runFn("getContextValue", machine, {key: "logs_count"});
+    console.log("!!!!!getContextValue logs_count", decodeFromUtf8Array(result))
+    currentState = decodeFromUtf8Array(result);
+    assert.strictEqual(currentState, "2");
 }
 
 runTests();

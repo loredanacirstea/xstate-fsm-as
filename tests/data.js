@@ -398,7 +398,7 @@ export const consensusSMConfigOrig = {
 
 export const consensusSMTimerConfigOrig = {
     context: {
-      data: "hello",
+      data: "aGVsbG8=",
       address: "0.0.0.0:8091",
     },
     id: "AB-Req-Res-timer",
@@ -463,7 +463,7 @@ export const RAFTLogReplication = {
       nextIndex: "[1,1]",
       currentTerm: "0",
       currentNodeId: "0",
-      nodeIPs: "[\"0.0.0.0:8090\",\"0.0.0.0:8091\"]",
+      nodeIPs: "[]",
     },
     id: "RAFT-LogReplication",
     initial: "uninitialized",
@@ -490,6 +490,12 @@ export const RAFTLogReplication = {
                 type: "sendHeartbeatResponse",
               },
             ],
+          },
+          setupNode: {
+            target: "Follower",
+            actions: {
+              type: "setupNode",
+            },
           },
         },
       },

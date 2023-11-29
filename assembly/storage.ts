@@ -68,10 +68,10 @@ export function setContextValueInternal(key: string, value: ArrayBuffer): void {
     return wasmx.storageStore(String.UTF8.encode(STORAGEKEY_CTX + key), value);
 }
 
-export function storeOwner(owner: string): void {
-    wasmxwrap.sstore(STORAGEKEY_OWNER, owner);
+export function storeOwner(owner: ArrayBuffer): void {
+    setContextValueInternal(STORAGEKEY_OWNER, owner);
 }
 
-export function loadOwner(): string {
-    return wasmxwrap.sload(STORAGEKEY_OWNER);
+export function loadOwner(): ArrayBuffer {
+    return getContextValueInternal(STORAGEKEY_OWNER);
 }

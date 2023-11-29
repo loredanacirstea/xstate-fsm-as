@@ -34,6 +34,10 @@ async function instantiate(module, imports = {}) {
         // assembly/wasmx/getCaller() => ~lib/arraybuffer/ArrayBuffer
         return __lowerBuffer(__module0.getCaller()) || __notnull();
       },
+      getAddress() {
+        // assembly/wasmx/getAddress() => ~lib/arraybuffer/ArrayBuffer
+        return __lowerBuffer(__module0.getAddress()) || __notnull();
+      },
       grpcRequest(data) {
         // assembly/wasmx/grpcRequest(~lib/arraybuffer/ArrayBuffer) => ~lib/arraybuffer/ArrayBuffer
         data = __liftBuffer(data >>> 0);
