@@ -1,5 +1,6 @@
 async function instantiate(module, imports = {}) {
   const __module0 = imports.wasmx;
+  const __module1 = imports.consensus;
   const adaptedImports = {
     env: Object.assign(Object.create(globalThis), imports.env || {}, {
       abort(message, fileName, lineNumber, columnNumber) {
@@ -17,6 +18,10 @@ async function instantiate(module, imports = {}) {
         // ~lib/bindings/dom/console.log(~lib/string/String) => void
         text = __liftString(text >>> 0);
         console.log(text);
+      },
+      "Date.now"() {
+        // ~lib/bindings/dom/Date.now() => f64
+        return Date.now();
       },
     }),
     wasmx: Object.assign(Object.create(__module0), {
@@ -72,6 +77,23 @@ async function instantiate(module, imports = {}) {
         // assembly/wasmx/finish(~lib/arraybuffer/ArrayBuffer) => void
         value = __liftBuffer(value >>> 0);
         __module0.finish(value);
+      },
+    }),
+    consensus: Object.assign(Object.create(__module1), {
+      CheckTx(value) {
+        // assembly/consensus/CheckTx(~lib/arraybuffer/ArrayBuffer) => ~lib/arraybuffer/ArrayBuffer
+        value = __liftBuffer(value >>> 0);
+        return __lowerBuffer(__module1.CheckTx(value)) || __notnull();
+      },
+      PrepareProposal(value) {
+        // assembly/consensus/PrepareProposal(~lib/arraybuffer/ArrayBuffer) => ~lib/arraybuffer/ArrayBuffer
+        value = __liftBuffer(value >>> 0);
+        return __lowerBuffer(__module1.PrepareProposal(value)) || __notnull();
+      },
+      ProcessProposal(value) {
+        // assembly/consensus/ProcessProposal(~lib/arraybuffer/ArrayBuffer) => ~lib/arraybuffer/ArrayBuffer
+        value = __liftBuffer(value >>> 0);
+        return __lowerBuffer(__module1.ProcessProposal(value)) || __notnull();
       },
     }),
   };
@@ -177,13 +199,14 @@ async function instantiate(module, imports = {}) {
   return adaptedExports;
 }
 
-export async function getExports(wasmxImport) {
+export async function getExports(wasmxImport, consensusImport) {
   const exports = await (async url => instantiate(
       await (async () => {
         try { return await globalThis.WebAssembly.compileStreaming(globalThis.fetch(url)); }
         catch { return globalThis.WebAssembly.compile(await (await import("node:fs/promises")).readFile(url)); }
       })(), {
         wasmx: __maybeDefault(wasmxImport),
+        consensus: __maybeDefault(consensusImport),
       },
   ))(new URL("../build/debug.wasm", import.meta.url));
   return exports

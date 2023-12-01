@@ -6,7 +6,7 @@ export class LogEntry {
     index: i64;
     termId: i32;
     leaderId: i32;
-    data: string; // base64-encoded JSON block data
+    data: string; // base64-encoded JSON block data; actually RequestProcessProposal
     constructor(index: i64, termId: i32, leaderId: i32, data: string) {
         this.index = index;
         this.termId = termId;
@@ -134,5 +134,26 @@ export class AppendEntryResponse {
     constructor(termId: i32, success: bool) {
         this.termId = termId;
         this.success = success;
+    }
+}
+
+// @ts-ignore
+@serializable
+export class Mempool {
+    txs: string[];
+    cummulatedGas: i64;
+    constructor(txs: string[], cummulatedGas: i64) {
+        this.txs = txs;
+        this.cummulatedGas = cummulatedGas;
+    }
+
+    add(tx: string, gas: i64, maxGas: i64): boolean {
+        const cummulatedGas = this.cummulatedGas + gas;
+        if (maxGas >= cummulatedGas) {
+            this.txs.push(tx);
+            this.cummulatedGas = cummulatedGas;
+            return true;
+        }
+        return false;
     }
 }

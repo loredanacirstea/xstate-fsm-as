@@ -7,7 +7,7 @@ export const LOG = {
 }
 
 export async function load(storage = {}, env = {}, logType = LOG.debug) {
-    const inst = await getExports(wasmx(storage, env, logType));
+    const inst = await getExports(wasmx(storage, env, logType), consensus(storage, env, logType));
     return inst
 }
 
@@ -115,6 +115,46 @@ export function wasmx(storageMap, env, logType = LOG.error) {
         grpcRequest,
         startInterval,
         stopInterval,
+    }
+}
+
+export function consensus(storageMap, env, logType = LOG.error) {
+    function PrepareProposal(buf) {
+        if (logType > 0) {
+            console.log('-host-PrepareProposal', [...new Uint8Array(buf)]);
+        }
+    }
+
+    function ProcessProposal(buf) {
+        if (logType > 0) {
+            console.log('-host-ProcessProposal', [...new Uint8Array(buf)]);
+        }
+    }
+
+    function FinalizeBlock(buf) {
+        if (logType > 0) {
+            console.log('-host-FinalizeBlock', [...new Uint8Array(buf)]);
+        }
+    }
+
+    function Commit(buf) {
+        if (logType > 0) {
+            console.log('-host-Commit', [...new Uint8Array(buf)]);
+        }
+    }
+
+    function CheckTx(buf) {
+        if (logType > 0) {
+            console.log('-host-CheckTx', [...new Uint8Array(buf)]);
+        }
+    }
+
+    return {
+        PrepareProposal,
+        ProcessProposal,
+        FinalizeBlock,
+        Commit,
+        CheckTx,
     }
 }
 

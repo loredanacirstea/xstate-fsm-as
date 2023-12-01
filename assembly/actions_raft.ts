@@ -2,6 +2,7 @@ import { JSON } from "json-as/assembly";
 import { encode as encodeBase64, decode as decodeBase64 } from "as-base64/assembly";
 import * as wasmxwrap from './wasmx_wrap';
 import * as wasmx from './wasmx';
+import * as consensuswrap from './consensus_wrap';
 import * as storage from './storage';
 
 import {
@@ -9,7 +10,8 @@ import {
   ActionParam,
 } from './types';
 import { hexToUint8Array, revert, parseInt32, parseInt64 } from "./utils";
-import { Block, LogEntry, Transaction, TransactionResponse, AppendEntry, AppendEntryResponse } from "./types_raft";
+import { Block, LogEntry, Transaction, TransactionResponse, AppendEntry, AppendEntryResponse, Mempool } from "./types_raft";
+import * as typestnd from "./types_tendermint";
 
 export function setupNode(
     params: ActionParam[],
@@ -41,6 +43,9 @@ export function processAppendEntries(
     params: ActionParam[],
     event: EventObject,
 ): void {
+    // here we receive new entries/logs/blocks
+    // we need to run ProcessProposal on each block
+    // and then FinalizeBlock & Commit
     let entryBase64: string = event.params[0].value;
     console.log("==processAppendEntries==" + entryBase64)
     const entryStr = String.UTF8.decode(decodeBase64(entryBase64).buffer);
@@ -163,27 +168,83 @@ export function getLogEntry(
 export function appendLogInternal(
     transaction: string, // base64
 ): void {
-    const index = getLogCount() + 1;
-    const hash = "";
-    const parentHash = "";
+    // check that tx is valid
+    const checktx = new typestnd.RequestCheckTx(transaction, typestnd.CheckTxType.New);
+    const checkResp = consensuswrap.CheckTx(checktx);
+    // we only check the code type; CheckTx should be stateless, just form checking
+    if (checkResp.code !== typestnd.CodeType.Ok) {
+        // transaction is not valid, we should finish
+        return revert(`transaction is invalid; code ${checkResp.code}`);
+    }
+
+    // add to mempool
+    const mempool = getMempool();
+    // TODO actually decode tx
+    // const parsedTx = decodeTx(transaction);
+    const parsedTx =  new typestnd.Transaction(2000000);
+    const maxgas = getMaxBlockGas()
+    if (maxgas < parsedTx.gas) {
+        return revert(`out of gas: ${parsedTx.gas}; max ${maxgas}`);
+    }
+    let added = mempool.add(transaction, parsedTx.gas, maxgas);
+    if (added) {
+        setMempool(mempool);
+        return;
+    }
+    const newmempool = new Mempool([], 0);
+    newmempool.add(transaction, parsedTx.gas, maxgas);
+    setMempool(newmempool);
+
+    // start proposal protocol
+    startBlockProposal(mempool.txs, mempool.cummulatedGas);
+}
+
+function startBlockProposal(txs: string[], cummulatedGas: i64): void {
+    // PrepareProposal TODO finish
+    const height = getLogCount() + 1;
+    const localLastCommit = new typestnd.ExtendedCommitInfo();
+    const maxTxBytes = getMaxTxBytes();
+
+    const prepareReq = new typestnd.RequestPrepareProposal(maxTxBytes, txs, localLastCommit, [], height, Date.now(), "", "");
+    const prepareResp = consensuswrap.PrepareProposal(prepareReq);
+    txs = prepareResp.txs;
+
+    // ProcessProposal: now check block is valid
+    const lastCommit = new typestnd.CommitInfo(0, []); // TODO
+    const processReq = new typestnd.RequestProcessProposal(txs, lastCommit, [], "", height, Date.now(), "", "")
+    const processResp = consensuswrap.ProcessProposal(processReq);
+    if (processResp.status === typestnd.ProposalStatus.REJECT) {
+        // TODO - what to do here? returning just discards the block and the transactions
+        return;
+    }
+    // We have a valid proposal to propagate to other nodes
+    return propagateLog(processReq);
+}
+
+function propagateLog(processReq: typestnd.RequestProcessProposal): void {
+    // const hash = "";
+    // const parentHash = "";
     // TODO verify transaction data
     // const transactionbuf = decode(transaction);
     // const transactions: Transaction[] = [JSON.parse<Transaction>(String.UTF8.decode(transactionbuf))];
-    const block = new Block(hash, parentHash, [transaction]);
-    const blockData = JSON.stringify<Block>(block);
+    // const block = new Block(hash, parentHash, [transaction]);
+    // const blockData = JSON.stringify<Block>(block);
+
+    const blockData = JSON.stringify<typestnd.RequestProcessProposal>(processReq);
     const blockDataBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(blockData)))
     const termId = getTermId();
     const leaderId = getCurrentNodeId();
-    const entry = new LogEntry(index, termId, leaderId, blockDataBase64);
+    const entry = new LogEntry(processReq.height, termId, leaderId, blockDataBase64);
     const entryData = JSON.stringify<LogEntry>(entry);
-    setLogCount(index);
-    setLogEntry(index, entryData);
+    setLogCount(processReq.height);
+    setLogEntry(processReq.height, entryData);
 }
 
 export function appendLogEntry(
     entry: LogEntry,
 ): void {
     const entryData = JSON.stringify<LogEntry>(entry);
+    console.log("==appendLogEntry==" + entryData);
     const index = getLogCount() + 1;
     setLogCount(index);
     setLogEntry(index, entryData);
@@ -200,7 +261,7 @@ export function setLogEntry(
 export function getLogCount(): i64 {
     const key = getLogCountKey();
     const valuestr = storage.getContextValue(key);
-    console.log("==getLogCount==" + key + "--" + valuestr);
+    console.log("==getLogCount==" + key + "==" + valuestr)
     if (valuestr != "") {
         const value = parseInt(valuestr);
         return i64(value);
@@ -212,6 +273,7 @@ export function setLogCount(
     value: i64,
 ): void {
     const key = getLogCountKey();
+    console.log("==setLogCount==" + key + "==" + value.toString())
     storage.setContextValue(key, value.toString());
 }
 
@@ -237,6 +299,12 @@ const COMMIT_INDEX = "commitIndex";
 const MATCH_INDEX_ARRAY = "matchIndex";
 // for each server, index of the next log entry to send to that server (initialized to leader last log index + 1)
 const NEXT_INDEX_ARRAY = "nextIndex";
+
+const MEMPOOL_KEY = "mempool";
+
+const MAX_BLOCK_GAS = "max_block_gas";
+
+const MAX_TX_BYTES = "max_tx_bytes";
 
 // index of log entry immediately preceding new ones
 // const PREV_LOG_INDEX = "prevLogIndex";
@@ -295,4 +363,27 @@ function getNodeIPs(): Array<string> {
 
 function setNextIndexArray(arr: Array<i64>): void {
     storage.setContextValue(NEXT_INDEX_ARRAY, JSON.stringify<Array<i64>>(arr));
+}
+
+export function getMempool(): Mempool {
+    const mempool = storage.getContextValue(MEMPOOL_KEY);
+    return JSON.parse<Mempool>(mempool);
+}
+
+export function setMempool(mempool: Mempool): void {
+    storage.setContextValue(MEMPOOL_KEY, JSON.stringify<Mempool>(mempool));
+}
+
+export function getMaxBlockGas(): i64 {
+    const gas = storage.getContextValue(MAX_BLOCK_GAS);
+    return parseInt64(gas);
+}
+
+export function getMaxTxBytes(): i64 {
+    const value = storage.getContextValue(MAX_TX_BYTES);
+    return parseInt64(value);
+}
+
+export function setMaxTxBytessetMaxBlockGas(value: i64): void {
+    storage.setContextValue(MAX_TX_BYTES, value.toString());
 }
