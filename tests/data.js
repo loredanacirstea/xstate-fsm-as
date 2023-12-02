@@ -454,12 +454,12 @@ export const consensusSMTimerConfigOrig = {
 
 export const RAFTLogReplication = {
     context: {
-      heartbeatTimeout: 0,
+      heartbeatTimeout: 5000,
       log: "",
       lastApplied: "0",
       commitIndex: "0",
       prevLogIndex: "0",
-      matchIndex: "",
+      matchIndex: "[0,0]",
       nextIndex: "[1,1]",
       currentTerm: "0",
       currentNodeId: "0",
@@ -551,6 +551,9 @@ export const RAFTLogReplication = {
                   },
                   {
                     type: "updateMatchIndex",
+                  },
+                  {
+                    type: "commitTransaction",
                   },
                 ],
               },

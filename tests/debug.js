@@ -19,6 +19,11 @@ async function instantiate(module, imports = {}) {
         text = __liftString(text >>> 0);
         console.log(text);
       },
+      "console.error"(text) {
+        // ~lib/bindings/dom/console.error(~lib/string/String) => void
+        text = __liftString(text >>> 0);
+        console.error(text);
+      },
       "Date.now"() {
         // ~lib/bindings/dom/Date.now() => f64
         return Date.now();

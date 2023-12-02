@@ -84,9 +84,9 @@ export enum BlockIDFlag {
 // @ts-ignore
 @serializable
 export class Validator {
-	address: Uint8Array
+	address: string // bech32
 	power: i64
-    constructor(address: Uint8Array, power: i64) {
+    constructor(address: string, power: i64) {
         this.address = address
         this.power = power
     }
@@ -223,8 +223,8 @@ export class ResponseFinalizeBlock {
 	txResults: ExecTxResult[]
 	validatorUpdates: ValidatorUpdate[]
 	consensusParamUpdates: ConsensusParams
-	appHash: Uint8Array
-    constructor(events: Event[], txResults: ExecTxResult[], validatorUpdates: ValidatorUpdate[], consensusParamUpdates: ConsensusParams, appHash: Uint8Array) {
+	appHash: string // base64
+    constructor(events: Event[], txResults: ExecTxResult[], validatorUpdates: ValidatorUpdate[], consensusParamUpdates: ConsensusParams, appHash: string) {
         this.events = events;
         this.txResults = txResults;
         this.validatorUpdates = validatorUpdates;

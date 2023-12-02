@@ -52,9 +52,29 @@ export function processAppendEntries(
     console.log("==processAppendEntries=entryStr=" + entryStr)
     let entry: AppendEntry = JSON.parse<AppendEntry>(entryStr);
     for (let i = 0; i < entry.entries.length; i++) {
-        appendLogEntry(entry.entries[i]);
+        processAppendEntry(entry.entries[i]);
     }
-    // TODO the rest of the verifications
+    setTermId(entry.termId);
+    // TODO
+    // entry.leaderId ?
+    const lastCommitIndex = getCommitIndex();
+    for (let i = lastCommitIndex + 1; i <= entry.leaderCommit; i++) {
+        startBlockFinalization(i);
+        setCommitIndex(i);
+    }
+}
+
+export function processAppendEntry(entry: LogEntry): void {
+    const data = decodeBase64(entry.data);
+    const processReq = JSON.parse<typestnd.RequestProcessProposal>(String.UTF8.decode(data.buffer));
+    const processResp = consensuswrap.ProcessProposal(processReq);
+    if (processResp.status === typestnd.ProposalStatus.REJECT) {
+        // TODO - what to do here? returning just discards the block and does not return a response to the leader
+        // but this node will not sync with the leader anymore
+        console.error("[Follower] ProcessProposal rejected for height: " + processReq.height.toString())
+        return;
+    }
+    appendLogEntry(entry);
 }
 
 export function sendHeartbeatResponse(
@@ -62,6 +82,7 @@ export function sendHeartbeatResponse(
     event: EventObject,
 ): void {
     const termId = getTermId();
+    // TODO when not successful
     const response = new AppendEntryResponse(termId, true);
     wasmx.finish(String.UTF8.encode(JSON.stringify<AppendEntryResponse>(response)));
 }
@@ -73,13 +94,41 @@ export function sendAppendEntries(
     // go through each node
     const nodeId = getCurrentNodeId();
     const ips = getNodeIPs();
+    let count = 0;
     for (let i = 0; i < ips.length; i++) {
         if (nodeId === i) continue;
         sendAppendEntry(i, ips[i]);
     }
+
+    // check if we can commit state
+    checkCommits();
+}
+
+function checkCommits(): void {
+    const lastCommitIndex = getLastApplied();
+    const nextIndexPerNode = getNextIndexArray();
+    const len = nextIndexPerNode.length;
+    const majority = i64(f64.floor(f64(len) / 2) + 1);
+    let nextCommit = lastCommitIndex + 1;
+    let count = 0;
+    for (let i = 0; i < len; i++) {
+        // next index is the next index to send, so we use >
+        if (nextIndexPerNode.at(i) > nextCommit) {
+            count += 1;
+        }
+    }
+    if (count >= majority) {
+        // We commit the state
+        startBlockFinalization(nextCommit);
+        // update last commited!
+        setLastApplied(nextCommit);
+        // We try the next index
+        checkCommits();
+    }
 }
 
 // TODO continue sending the entries until all nodes receive them
+// TODO make this an eventual and retry until responses are received or leader is changed
 export function sendAppendEntry(
     nodeId: i32,
     nodeIp: string,
@@ -98,7 +147,7 @@ export function sendAppendEntry(
     if (previousEntryStr != "") {
         previousEntry = JSON.parse<LogEntry>(previousEntryStr);
     } else {
-        previousEntry = new LogEntry(0, 0, 0, "");
+        previousEntry = new LogEntry(0, 0, 0, "", "");
     }
     const data = new AppendEntry(
         getTermId(),
@@ -119,6 +168,47 @@ export function sendAppendEntry(
         nextIndexPerNode[nodeId] = lastIndex;
         setNextIndexArray(nextIndexPerNode);
     }
+}
+
+function updateNextIndex(
+    params: ActionParam[],
+    event: EventObject,
+): void {
+
+}
+
+function updateMatchIndex(
+    params: ActionParam[],
+    event: EventObject,
+): void {
+    let termId: i32 = 0;
+    let success: bool = false;
+    for (let i = 0; i < event.params.length; i++) {
+        if (event.params[i].key === "termId") {
+            termId = parseInt32(event.params[i].value);
+            continue;
+        }
+        if (event.params[i].key === "success") {
+            if (event.params[i].value === "")
+            console.log("==success==" + event.params[i].value);
+            if (event.params[i].value === "true") {
+                success = true;
+            }
+            continue;
+        }
+    }
+    // TODO termId
+    // TODO success false?
+    if (!success) return;
+    // const matchIndex = getMatchIndexArray();
+
+}
+
+function commitTransaction(
+    params: ActionParam[],
+    event: EventObject,
+): void {
+
 }
 
 export function sendNewTransactionResponse(
@@ -181,7 +271,7 @@ export function appendLogInternal(
     const mempool = getMempool();
     // TODO actually decode tx
     // const parsedTx = decodeTx(transaction);
-    const parsedTx =  new typestnd.Transaction(2000000);
+    const parsedTx =  new typestnd.Transaction(15000000);
     const maxgas = getMaxBlockGas()
     if (maxgas < parsedTx.gas) {
         return revert(`out of gas: ${parsedTx.gas}; max ${maxgas}`);
@@ -225,13 +315,40 @@ function startBlockProposal(txs: string[], cummulatedGas: i64): void {
     const processResp = consensuswrap.ProcessProposal(processReq);
     if (processResp.status === typestnd.ProposalStatus.REJECT) {
         // TODO - what to do here? returning just discards the block and the transactions
+        console.error("[Leader] ProcessProposal rejected for height: " + height.toString())
         return;
     }
     // We have a valid proposal to propagate to other nodes
-    return propagateLog(processReq);
+    return appendLogInternalVerified(processReq);
 }
 
-function propagateLog(processReq: typestnd.RequestProcessProposal): void {
+function startBlockFinalization(index: i64): void {
+    // get entry and apply it
+    const entry = getLogEntry(index);
+    const entryobj = JSON.parse<LogEntry>(entry);
+    const processReqBz = String.UTF8.decode(decodeBase64(entryobj.data).buffer);
+    const processReq = JSON.parse<typestnd.RequestProcessProposal>(processReqBz);
+    const finalizeReq = new typestnd.RequestFinalizeBlock(
+        processReq.txs,
+        processReq.proposedLastCommit,
+        processReq.misbehavior,
+        processReq.hash,
+        processReq.height,
+        processReq.time,
+        processReq.nextValidatorsHash,
+        processReq.proposerAddress,
+    )
+    const finalizeResp = consensuswrap.FinalizeBlock(finalizeReq);
+    entryobj.result = JSON.stringify<typestnd.ResponseFinalizeBlock>(finalizeResp);
+
+    const commitResponse = consensuswrap.Commit();
+    // TODO commitResponse.retainHeight
+    // Tendermint removes all data for heights lower than `retain_height`
+
+    setLogEntryObj(entryobj);
+}
+
+function appendLogInternalVerified(processReq: typestnd.RequestProcessProposal): void {
     // const hash = "";
     // const parentHash = "";
     // TODO verify transaction data
@@ -244,20 +361,30 @@ function propagateLog(processReq: typestnd.RequestProcessProposal): void {
     const blockDataBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(blockData)))
     const termId = getTermId();
     const leaderId = getCurrentNodeId();
-    const entry = new LogEntry(processReq.height, termId, leaderId, blockDataBase64);
-    const entryData = JSON.stringify<LogEntry>(entry);
-    setLogCount(processReq.height);
-    setLogEntry(processReq.height, entryData);
+    const entry = new LogEntry(processReq.height, termId, leaderId, blockDataBase64, "");
+    setLogCount(entry.index);
+    setLogEntryObj(entry);
 }
 
 export function appendLogEntry(
     entry: LogEntry,
 ): void {
-    const entryData = JSON.stringify<LogEntry>(entry);
-    console.log("==appendLogEntry==" + entryData);
+    console.log("==appendLogEntry==" + JSON.stringify<LogEntry>(entry));
     const index = getLogCount() + 1;
+    // TODO entry may be sent multiple times, we need to see if we already added it
+    // and just return if already saved
+    if (index !== entry.index) {
+        revert(`mismatched index while appending log entry: expected ${index}, found ${entry.index}`);
+    }
     setLogCount(index);
-    setLogEntry(index, entryData);
+    setLogEntryObj(entry);
+}
+
+export function setLogEntryObj(
+    entry: LogEntry,
+): void {
+    const data = JSON.stringify<LogEntry>(entry);
+    setLogEntry(entry.index, data);
 }
 
 export function setLogEntry(
@@ -319,14 +446,15 @@ const MAX_TX_BYTES = "max_tx_bytes";
 // index of log entry immediately preceding new ones
 // const PREV_LOG_INDEX = "prevLogIndex";
 
-// updateNextIndex
-// updateMatchIndex
-
 function getTermId(): i32 {
     const valuestr = storage.getContextValue(TERM_ID);
     if (!valuestr) revert(TERM_ID + " missing");
     const value = parseInt(valuestr);
     return i32(value);
+}
+
+function setTermId(value: i32): void {
+    storage.setContextValue(TERM_ID, value.toString());
 }
 
 function getCurrentNodeId(): i32 {
@@ -339,8 +467,11 @@ function getCurrentNodeId(): i32 {
 function getLastApplied(): i64 {
     const valuestr = storage.getContextValue(LAST_APPLIED);
     if (!valuestr) revert(LAST_APPLIED + " missing");
-    const value = parseInt(valuestr);
-    return i64(value);
+   return parseInt64(valuestr);
+}
+
+function setLastApplied(value: i64): void {
+    storage.setContextValue(LAST_APPLIED, value.toString());
 }
 
 function getCommitIndex(): i64 {
@@ -350,11 +481,19 @@ function getCommitIndex(): i64 {
     return i64(value);
 }
 
+function setCommitIndex(index: i64): void {
+    storage.setContextValue(COMMIT_INDEX, index.toString());
+}
+
 function getMatchIndexArray(): Array<i64> {
     const valuestr = storage.getContextValue(MATCH_INDEX_ARRAY);
     if (!valuestr) revert(MATCH_INDEX_ARRAY + " missing");
     const value = JSON.parse<Array<i64>>(valuestr);
     return value;
+}
+
+function setMatchIndexArray(value: Array<i64>): void {
+    storage.setContextValue(MATCH_INDEX_ARRAY, JSON.stringify<Array<i64>>(value));
 }
 
 function getNextIndexArray(): Array<i64> {

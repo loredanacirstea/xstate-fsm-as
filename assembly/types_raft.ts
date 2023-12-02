@@ -1,4 +1,5 @@
 import { JSON } from "json-as/assembly";
+import { RequestProcessProposal, ResponseFinalizeBlock } from "./types_tendermint";
 
 // @ts-ignore
 @serializable
@@ -6,12 +7,14 @@ export class LogEntry {
     index: i64;
     termId: i32;
     leaderId: i32;
-    data: string; // base64-encoded JSON block data; actually RequestProcessProposal
-    constructor(index: i64, termId: i32, leaderId: i32, data: string) {
+    data: string; // base64-encoded RequestProcessProposal
+    result: string // base64-encoded ResponseFinalizeBlock
+    constructor(index: i64, termId: i32, leaderId: i32, data: string, result: string) {
         this.index = index;
         this.termId = termId;
         this.leaderId = leaderId;
         this.data = data;
+        this.result = result;
     }
 }
 
@@ -21,12 +24,14 @@ export class LogEntryInternal {
     index: i64;
     termId: i32;
     leaderId: i32;
-    data: Block;
-    constructor(index: i64, termId: i32, leaderId: i32, data: Block) {
+    data: RequestProcessProposal;
+    result: ResponseFinalizeBlock;
+    constructor(index: i64, termId: i32, leaderId: i32, data: RequestProcessProposal, result: ResponseFinalizeBlock) {
         this.index = index;
         this.termId = termId;
         this.leaderId = leaderId;
         this.data = data;
+        this.result = result;
     }
 }
 
