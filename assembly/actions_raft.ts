@@ -191,7 +191,7 @@ export function appendLogInternal(
         setMempool(mempool);
         return;
     }
-    const newmempool = new Mempool([], 0);
+    const newmempool = new Mempool(new Array<string>(0), 0);
     newmempool.add(transaction, parsedTx.gas, maxgas);
     setMempool(newmempool);
 
@@ -202,16 +202,26 @@ export function appendLogInternal(
 function startBlockProposal(txs: string[], cummulatedGas: i64): void {
     // PrepareProposal TODO finish
     const height = getLogCount() + 1;
-    const localLastCommit = new typestnd.ExtendedCommitInfo();
+    // TODO correct votes?
+    const localLastCommit = new typestnd.ExtendedCommitInfo(0, new Array<typestnd.ExtendedVoteInfo>(0));
     const maxTxBytes = getMaxTxBytes();
+    const time = new Date(Date.now())
 
-    const prepareReq = new typestnd.RequestPrepareProposal(maxTxBytes, txs, localLastCommit, [], height, Date.now(), "", "");
+    const prepareReq = new typestnd.RequestPrepareProposal(maxTxBytes, txs, localLastCommit, [], height, time.toISOString(), "", "");
     const prepareResp = consensuswrap.PrepareProposal(prepareReq);
-    txs = prepareResp.txs;
 
     // ProcessProposal: now check block is valid
     const lastCommit = new typestnd.CommitInfo(0, []); // TODO
-    const processReq = new typestnd.RequestProcessProposal(txs, lastCommit, [], "", height, Date.now(), "", "")
+    const processReq = new typestnd.RequestProcessProposal(
+        prepareResp.txs,
+        lastCommit,
+        [],
+        "",
+        prepareReq.height,
+        prepareReq.time,
+        prepareReq.nextValidatorsHash,
+        prepareReq.proposerAddress,
+    )
     const processResp = consensuswrap.ProcessProposal(processReq);
     if (processResp.status === typestnd.ProposalStatus.REJECT) {
         // TODO - what to do here? returning just discards the block and the transactions
@@ -367,6 +377,7 @@ function setNextIndexArray(arr: Array<i64>): void {
 
 export function getMempool(): Mempool {
     const mempool = storage.getContextValue(MEMPOOL_KEY);
+    if (mempool === "") return  new Mempool(new Array<string>(0), 0);
     return JSON.parse<Mempool>(mempool);
 }
 
@@ -375,15 +386,17 @@ export function setMempool(mempool: Mempool): void {
 }
 
 export function getMaxBlockGas(): i64 {
-    const gas = storage.getContextValue(MAX_BLOCK_GAS);
-    return parseInt64(gas);
+    const value = storage.getContextValue(MAX_BLOCK_GAS);
+    if (value === "") return i64(0);
+    return parseInt64(value);
 }
 
 export function getMaxTxBytes(): i64 {
     const value = storage.getContextValue(MAX_TX_BYTES);
+    if (value === "") return i64(0);
     return parseInt64(value);
 }
 
-export function setMaxTxBytessetMaxBlockGas(value: i64): void {
+export function setMaxTxBytes(value: i64): void {
     storage.setContextValue(MAX_TX_BYTES, value.toString());
 }

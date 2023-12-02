@@ -464,6 +464,8 @@ export const RAFTLogReplication = {
       currentTerm: "0",
       currentNodeId: "0",
       nodeIPs: "[]",
+      max_block_gas: "20000000",
+      max_tx_bytes: "65536",
     },
     id: "RAFT-LogReplication",
     initial: "uninitialized",

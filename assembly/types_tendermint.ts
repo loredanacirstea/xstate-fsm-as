@@ -2,8 +2,35 @@ import { JSON } from "json-as/assembly";
 
 // @ts-ignore
 @serializable
+export class ExtendedVoteInfo {
+	// The validator that sent the vote.
+	validator: Validator;
+	// Non-deterministic extension provided by the sending validator's application.
+	voteExtension: string; // base64
+	// Vote extension signature created by CometBFT
+	extensionSignature: string; // base64
+	// block_id_flag indicates whether the validator voted for a block, nil, or did not vote at all
+	blockIdFlag: BlockIDFlag;
+    constructor(validator: Validator, voteExtension: string, extensionSignature: string, blockIdFlag: BlockIDFlag) {
+        this.validator = validator;
+        this.voteExtension = voteExtension;
+        this.extensionSignature = extensionSignature;
+        this.blockIdFlag = blockIdFlag;
+    }
+}
+
+// @ts-ignore
+@serializable
 export class ExtendedCommitInfo {
-    // TODO
+    // The round at which the block proposer decided in the previous height.
+	round: i32;
+	// List of validators' addresses in the last validator set with their voting
+	// information, including vote extensions.
+	votes: ExtendedVoteInfo[];
+    constructor(round: i32, votes: ExtendedVoteInfo[]) {
+        this.round = round;
+        this.votes = votes;
+    }
 }
 
 // @ts-ignore
@@ -16,16 +43,16 @@ export class Misbehavior {
 @serializable
 export class RequestPrepareProposal {
     // the modified transactions cannot exceed this size.
-	maxTxBytes: i64;
+	max_tx_bytes: i64;
 	txs: Array<string>; // base64
 	localLastCommit: ExtendedCommitInfo;
 	misbehavior: Misbehavior[];
 	height: i64;
-	time: i64;
+	time: string;
 	nextValidatorsHash: string; // base64
 	proposerAddress: string; // base64
-    constructor(maxTxBytes: i64, txs: Array<string>, localLastCommit: ExtendedCommitInfo, misbehavior: Misbehavior[], height: i64, time: i64, nextValidatorsHash: string, proposerAddress: string) {
-        this.maxTxBytes = maxTxBytes;
+    constructor(maxTxBytes: i64, txs: Array<string>, localLastCommit: ExtendedCommitInfo, misbehavior: Misbehavior[], height: i64, time: string, nextValidatorsHash: string, proposerAddress: string) {
+        this.max_tx_bytes = maxTxBytes;
         this.txs = txs;
         this.localLastCommit = localLastCommit;
         this.misbehavior = misbehavior;
@@ -95,10 +122,10 @@ export class RequestProcessProposal {
 	misbehavior: Misbehavior[]
 	hash: string // base64
 	height: i64
-	time: i64
+	time: string
 	nextValidatorsHash: string // base64
 	proposerAddress: string // base64
-    constructor(txs: Array<string>, proposedLastCommit: CommitInfo, misbehavior: Misbehavior[], hash: string, height: i64, time: i64, nextValidatorsHash: string, proposerAddress: string) {
+    constructor(txs: Array<string>, proposedLastCommit: CommitInfo, misbehavior: Misbehavior[], hash: string, height: i64, time: string, nextValidatorsHash: string, proposerAddress: string) {
         this.txs = txs;
         this.proposedLastCommit = proposedLastCommit;
         this.misbehavior = misbehavior;
@@ -135,10 +162,10 @@ export class RequestFinalizeBlock {
 	misbehavior: Misbehavior[]
 	hash: string // base64 encoded
 	height: i64
-	time: Date
+	time: string
 	nextValidatorsHash: string // base64 encoded
 	proposerAddress: string // base64 encoded
-    constructor(txs: Array<string>, decidedLastCommit: CommitInfo, misbehavior: Misbehavior[], hash: string, height: i64, time: Date, nextValidatorsHash: string, proposerAddress: string) {
+    constructor(txs: Array<string>, decidedLastCommit: CommitInfo, misbehavior: Misbehavior[], hash: string, height: i64, time: string, nextValidatorsHash: string, proposerAddress: string) {
         this.txs = txs;
         this.decidedLastCommit = decidedLastCommit;
         this.misbehavior = misbehavior;

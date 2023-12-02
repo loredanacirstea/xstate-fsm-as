@@ -150,7 +150,8 @@ export class Mempool {
     add(tx: string, gas: i64, maxGas: i64): boolean {
         const cummulatedGas = this.cummulatedGas + gas;
         if (maxGas >= cummulatedGas) {
-            this.txs.push(tx);
+            // this.txs.push(tx);
+            this.txs = this.txs.concat([tx]);
             this.cummulatedGas = cummulatedGas;
             return true;
         }
