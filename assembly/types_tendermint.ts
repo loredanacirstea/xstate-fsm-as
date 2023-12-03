@@ -6,16 +6,16 @@ export class ExtendedVoteInfo {
 	// The validator that sent the vote.
 	validator: Validator;
 	// Non-deterministic extension provided by the sending validator's application.
-	voteExtension: string; // base64
+	vote_extension: string; // base64
 	// Vote extension signature created by CometBFT
-	extensionSignature: string; // base64
+	extension_signature: string; // base64
 	// block_id_flag indicates whether the validator voted for a block, nil, or did not vote at all
-	blockIdFlag: BlockIDFlag;
+	block_id_flag: BlockIDFlag;
     constructor(validator: Validator, voteExtension: string, extensionSignature: string, blockIdFlag: BlockIDFlag) {
         this.validator = validator;
-        this.voteExtension = voteExtension;
-        this.extensionSignature = extensionSignature;
-        this.blockIdFlag = blockIdFlag;
+        this.vote_extension = voteExtension;
+        this.extension_signature = extensionSignature;
+        this.block_id_flag = blockIdFlag;
     }
 }
 
@@ -45,21 +45,21 @@ export class RequestPrepareProposal {
     // the modified transactions cannot exceed this size.
 	max_tx_bytes: i64;
 	txs: Array<string>; // base64
-	localLastCommit: ExtendedCommitInfo;
+	local_last_commit: ExtendedCommitInfo;
 	misbehavior: Misbehavior[];
 	height: i64;
 	time: string;
-	nextValidatorsHash: string; // base64
-	proposerAddress: string; // base64
+	next_validators_hash: string; // base64
+	proposer_address: string; // base64
     constructor(maxTxBytes: i64, txs: Array<string>, localLastCommit: ExtendedCommitInfo, misbehavior: Misbehavior[], height: i64, time: string, nextValidatorsHash: string, proposerAddress: string) {
         this.max_tx_bytes = maxTxBytes;
         this.txs = txs;
-        this.localLastCommit = localLastCommit;
+        this.local_last_commit = localLastCommit;
         this.misbehavior = misbehavior;
         this.height = height;
         this.time = time;
-        this.nextValidatorsHash = nextValidatorsHash;
-        this.proposerAddress = proposerAddress;
+        this.next_validators_hash = nextValidatorsHash;
+        this.proposer_address = proposerAddress;
     }
 }
 
@@ -96,10 +96,10 @@ export class Validator {
 @serializable
 export class VoteInfo {
 	validator:   Validator
-	blockIdFlag: BlockIDFlag
+	block_id_flag: BlockIDFlag
     constructor(validator: Validator, blockIdFlag: BlockIDFlag) {
         this.validator = validator
-        this.blockIdFlag = blockIdFlag
+        this.block_id_flag = blockIdFlag
     }
 }
 
@@ -118,22 +118,22 @@ export class CommitInfo {
 @serializable
 export class RequestProcessProposal {
     txs: Array<string> // base64 encoded
-	proposedLastCommit: CommitInfo
+	proposed_last_commit: CommitInfo
 	misbehavior: Misbehavior[]
 	hash: string // base64
 	height: i64
 	time: string
-	nextValidatorsHash: string // base64
-	proposerAddress: string // base64
+	next_validators_hash: string // base64
+	proposer_address: string // base64
     constructor(txs: Array<string>, proposedLastCommit: CommitInfo, misbehavior: Misbehavior[], hash: string, height: i64, time: string, nextValidatorsHash: string, proposerAddress: string) {
         this.txs = txs;
-        this.proposedLastCommit = proposedLastCommit;
+        this.proposed_last_commit = proposedLastCommit;
         this.misbehavior = misbehavior;
         this.hash = hash;
         this.height = height;
         this.time = time;
-        this.nextValidatorsHash = nextValidatorsHash;
-        this.proposerAddress = proposerAddress;
+        this.next_validators_hash = nextValidatorsHash;
+        this.proposer_address = proposerAddress;
     }
 }
 
@@ -158,22 +158,22 @@ export class ResponseProcessProposal {
 @serializable
 export class RequestFinalizeBlock {
     txs: Array<string> // base64 encoded
-	decidedLastCommit: CommitInfo
+	decided_last_commit: CommitInfo
 	misbehavior: Misbehavior[]
 	hash: string // base64 encoded
 	height: i64
 	time: string
-	nextValidatorsHash: string // base64 encoded
-	proposerAddress: string // base64 encoded
+	next_validators_hash: string // base64 encoded
+	proposer_address: string // base64 encoded
     constructor(txs: Array<string>, decidedLastCommit: CommitInfo, misbehavior: Misbehavior[], hash: string, height: i64, time: string, nextValidatorsHash: string, proposerAddress: string) {
         this.txs = txs;
-        this.decidedLastCommit = decidedLastCommit;
+        this.decided_last_commit = decidedLastCommit;
         this.misbehavior = misbehavior;
         this.hash = hash;
         this.height = height;
         this.time = time;
-        this.nextValidatorsHash = nextValidatorsHash;
-        this.proposerAddress = proposerAddress;
+        this.next_validators_hash = nextValidatorsHash;
+        this.proposer_address = proposerAddress;
     }
 }
 
@@ -213,32 +213,122 @@ export class ValidatorUpdate {
 
 // @ts-ignore
 @serializable
+export class BlockParams {
+    // Max block size, in bytes.
+	// Note: must be greater than 0
+	max_bytes: i64
+	// Max gas per block.
+	// Note: must be greater or equal to -1
+	max_gas: i64
+    constructor(max_bytes: i64, max_gas: i64) {
+        this.max_bytes = max_bytes;
+        this.max_gas = max_gas;
+    }
+}
+
+// @ts-ignore
+@serializable
+export class Duration {
+    seconds: i64
+	nanos: i32
+    constructor(seconds: i64 , nanos: i32) {
+        this.seconds = seconds
+        this.nanos = nanos
+    }
+}
+
+// @ts-ignore
+@serializable
+export class EvidenceParams {
+    // Max age of evidence, in blocks.
+	//
+	// The basic formula for calculating this is: MaxAgeDuration / {average block
+	// time}.
+	max_age_num_blocks: i64
+	// Max age of evidence, in time.
+	//
+	// It should correspond with an app's "unbonding period" or other similar
+	// mechanism for handling [Nothing-At-Stake
+	// attacks](https://github.com/ethereum/wiki/wiki/Proof-of-Stake-FAQ#what-is-the-nothing-at-stake-problem-and-how-can-it-be-fixed).
+	max_age_duration: Duration
+	// This sets the maximum size of total evidence in bytes that can be committed in a single block.
+	// and should fall comfortably under the max block bytes.
+	// Default is 1048576 or 1MB
+	max_bytes: i64
+    constructor(max_age_num_blocks: i64, max_age_duration: Duration, max_bytes: i64) {
+        this.max_age_num_blocks = max_age_num_blocks;
+        this.max_age_duration = max_age_duration;
+        this.max_bytes = max_bytes;
+    }
+}
+
+// @ts-ignore
+@serializable
+export class ValidatorParams {
+    pub_key_types: string[]
+    constructor(pub_key_types: string[]) {
+        this.pub_key_types = pub_key_types
+    }
+}
+
+// @ts-ignore
+@serializable
+export class VersionParams {
+    app: u64
+    constructor(app: u64) {
+        this.app = app;
+    }
+}
+
+// @ts-ignore
+@serializable
+export class ABCIParams {
+    vote_extensions_enable_height: i64
+    constructor(vote_extensions_enable_height: i64) {
+        this.vote_extensions_enable_height = vote_extensions_enable_height;
+    }
+}
+
+// @ts-ignore
+@serializable
 export class ConsensusParams {
+    block: BlockParams
+	evidence: EvidenceParams
+	validator: ValidatorParams
+	version: VersionParams
+	abci: ABCIParams
+    constructor(block: BlockParams, evidence: EvidenceParams, validator: ValidatorParams, version: VersionParams, abci: ABCIParams) {
+        this.block = block
+        this.evidence = evidence
+        this.validator = validator
+        this.version = version
+        this.abci = abci
+    }
 }
 
 // @ts-ignore
 @serializable
 export class ResponseFinalizeBlock {
 	events: Event[]
-	txResults: ExecTxResult[]
-	validatorUpdates: ValidatorUpdate[]
-	consensusParamUpdates: ConsensusParams
-	appHash: string // base64
+	tx_results: ExecTxResult[]
+	validator_updates: ValidatorUpdate[]
+	consensus_param_updates: ConsensusParams
+	app_hash: string // base64
     constructor(events: Event[], txResults: ExecTxResult[], validatorUpdates: ValidatorUpdate[], consensusParamUpdates: ConsensusParams, appHash: string) {
         this.events = events;
-        this.txResults = txResults;
-        this.validatorUpdates = validatorUpdates;
-        this.consensusParamUpdates = consensusParamUpdates;
-        this.appHash = appHash;
+        this.tx_results = txResults;
+        this.validator_updates = validatorUpdates;
+        this.consensus_param_updates = consensusParamUpdates;
+        this.app_hash = appHash;
     }
 }
 
 // @ts-ignore
 @serializable
 export class ResponseCommit {
-	retainHeight: i64;
+	retain_height: i64;
     constructor(retainHeight: i64) {
-        this.retainHeight = retainHeight;
+        this.retain_height = retainHeight;
     }
 }
 

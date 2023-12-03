@@ -309,8 +309,8 @@ function startBlockProposal(txs: string[], cummulatedGas: i64): void {
         "",
         prepareReq.height,
         prepareReq.time,
-        prepareReq.nextValidatorsHash,
-        prepareReq.proposerAddress,
+        prepareReq.next_validators_hash,
+        prepareReq.proposer_address,
     )
     const processResp = consensuswrap.ProcessProposal(processReq);
     if (processResp.status === typestnd.ProposalStatus.REJECT) {
@@ -330,13 +330,13 @@ function startBlockFinalization(index: i64): void {
     const processReq = JSON.parse<typestnd.RequestProcessProposal>(processReqBz);
     const finalizeReq = new typestnd.RequestFinalizeBlock(
         processReq.txs,
-        processReq.proposedLastCommit,
+        processReq.proposed_last_commit,
         processReq.misbehavior,
         processReq.hash,
         processReq.height,
         processReq.time,
-        processReq.nextValidatorsHash,
-        processReq.proposerAddress,
+        processReq.next_validators_hash,
+        processReq.proposer_address,
     )
     const finalizeResp = consensuswrap.FinalizeBlock(finalizeReq);
     entryobj.result = JSON.stringify<typestnd.ResponseFinalizeBlock>(finalizeResp);
