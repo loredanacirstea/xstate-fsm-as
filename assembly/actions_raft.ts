@@ -94,7 +94,6 @@ export function sendAppendEntries(
     // go through each node
     const nodeId = getCurrentNodeId();
     const ips = getNodeIPs();
-    let count = 0;
     for (let i = 0; i < ips.length; i++) {
         if (nodeId === i) continue;
         sendAppendEntry(i, ips[i]);
@@ -106,12 +105,14 @@ export function sendAppendEntries(
 
 function checkCommits(): void {
     const lastCommitIndex = getLastApplied();
+    const currentNodeId = getCurrentNodeId();
     const nextIndexPerNode = getNextIndexArray();
     const len = nextIndexPerNode.length;
     const majority = i64(f64.floor(f64(len) / 2) + 1);
     let nextCommit = lastCommitIndex + 1;
-    let count = 0;
+    let count = 1; // count the leader
     for (let i = 0; i < len; i++) {
+        // leader's index will always be 0, so not included below
         // next index is the next index to send, so we use >
         if (nextIndexPerNode.at(i) > nextCommit) {
             count += 1;

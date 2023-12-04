@@ -1,3 +1,4 @@
+export declare function InitChain(value: ArrayBuffer): ArrayBuffer
 export declare function PrepareProposal(value: ArrayBuffer): ArrayBuffer
 export declare function ProcessProposal(value: ArrayBuffer): ArrayBuffer
 export declare function FinalizeBlock(value: ArrayBuffer): ArrayBuffer

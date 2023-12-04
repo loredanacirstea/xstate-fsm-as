@@ -397,3 +397,35 @@ export class Transaction {
         this.gas = gas;
     }
 }
+
+// @ts-ignore
+@serializable
+export class RequestInitChain {
+	time: string
+	chain_id: string
+	consensus_params: ConsensusParams
+	validators: ValidatorUpdate[]
+	app_state_bytes: string // base64
+	initial_height: i64
+    constructor(time: string, chain_id: string, consensus_params: ConsensusParams, validators: ValidatorUpdate[], app_state_bytes: string, initial_height: i64) {
+        this.time = time
+        this.chain_id = chain_id
+        this.consensus_params = consensus_params
+        this.validators = validators
+        this.app_state_bytes = app_state_bytes
+        this.initial_height = initial_height
+    }
+}
+
+// @ts-ignore
+@serializable
+export class ResponseInitChain {
+	consensus_params: ConsensusParams
+	validators: ValidatorUpdate[]
+	app_hash: string
+    constructor(consensus_params: ConsensusParams, validators: ValidatorUpdate[], app_hash: string) {
+        this.consensus_params = consensus_params
+        this.validators = validators
+        this.app_hash = app_hash
+    }
+}
