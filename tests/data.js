@@ -454,18 +454,18 @@ export const consensusSMTimerConfigOrig = {
 
 export const RAFTLogReplication = {
     context: {
-      heartbeatTimeout: 5000,
       log: "",
-      lastApplied: "0",
-      commitIndex: "0",
-      prevLogIndex: "0",
-      matchIndex: "[0,0]",
-      nextIndex: "[1,1]",
-      currentTerm: "0",
-      currentNodeId: "0",
       nodeIPs: "[]",
-      max_block_gas: "20000000",
+      nextIndex: "[1,1]",
+      matchIndex: "[0,0]",
+      commitIndex: "0",
+      currentTerm: "0",
+      lastApplied: "0",
       max_tx_bytes: "65536",
+      prevLogIndex: "0",
+      currentNodeId: "0",
+      max_block_gas: "20000000",
+      heartbeatTimeout: 5000,
     },
     id: "RAFT-LogReplication",
     initial: "uninitialized",
@@ -473,96 +473,108 @@ export const RAFTLogReplication = {
       uninitialized: {
         on: {
           initialize: {
-            target: "Follower",
+            target: "initialized",
           },
         },
       },
-      Follower: {
-        on: {
-          change: {
-            target: "Candidate",
-          },
-          receiveHeartbeat: {
-            target: "Follower",
-            actions: [
-              {
-                type: "processAppendEntries",
-              },
-              {
-                type: "sendHeartbeatResponse",
-              },
-            ],
-          },
-          setupNode: {
-            target: "Follower",
-            actions: {
-              type: "setupNode",
-            },
-          },
-        },
-      },
-      Candidate: {
-        on: {
-          change: {
-            target: "Leader",
-          },
-        },
-      },
-      Leader: {
-        entry: [
-          {
-            type: "reeinitialize_nextIndex",
-          },
-          {
-            type: "reeinitialize_matchIndex",
-          },
-        ],
-        initial: "active",
+      initialized: {
+        initial: "Follower",
         states: {
-          active: {
-            after: {
-              heartbeatTimeout: {
-                target: "#RAFT-LogReplication.Leader.active",
+          Follower: {
+            on: {
+              change: {
+                target: "Candidate",
+              },
+              receiveHeartbeat: {
+                target: "Follower",
                 actions: [
                   {
-                    type: "sendAppendEntries",
+                    type: "processAppendEntries",
+                  },
+                  {
+                    type: "sendHeartbeatResponse",
                   },
                 ],
-                meta: {},
+              },
+              setupNode: {
+                target: "Follower",
+                actions: {
+                  type: "setupNode",
+                },
+              },
+            },
+          },
+          Candidate: {
+            on: {
+              change: {
+                target: "Leader",
+              },
+            },
+          },
+          Leader: {
+            entry: [
+              {
+                type: "reeinitialize_nextIndex",
+              },
+              {
+                type: "reeinitialize_matchIndex",
+              },
+            ],
+            initial: "active",
+            states: {
+              active: {
+                after: {
+                  heartbeatTimeout: {
+                    target: "#RAFT-LogReplication.initialized.Leader.active",
+                    actions: [
+                      {
+                        type: "sendAppendEntries",
+                      },
+                    ],
+                    meta: {},
+                  },
+                },
+                on: {
+                  newTransaction: {
+                    target: "active",
+                    actions: [
+                      {
+                        type: "appendLog",
+                      },
+                      {
+                        type: "sendNewTransactionResponse",
+                      },
+                    ],
+                  },
+                  heartbeatResponse: {
+                    target: "active",
+                    actions: [
+                      {
+                        type: "updateNextIndex",
+                      },
+                      {
+                        type: "updateMatchIndex",
+                      },
+                      {
+                        type: "commitTransaction",
+                      },
+                    ],
+                  },
+                },
               },
             },
             on: {
-              newTransaction: {
-                target: "active",
-                actions: [
-                  {
-                    type: "appendLog",
-                  },
-                  {
-                    type: "sendNewTransactionResponse",
-                  },
-                ],
-              },
-              heartbeatResponse: {
-                target: "active",
-                actions: [
-                  {
-                    type: "updateNextIndex",
-                  },
-                  {
-                    type: "updateMatchIndex",
-                  },
-                  {
-                    type: "commitTransaction",
-                  },
-                ],
+              change: {
+                target: "Follower",
               },
             },
           },
         },
         on: {
-          change: {
-            target: "Follower",
+          start: {
+            actions: {
+              type: "startExecution",
+            },
           },
         },
       },
