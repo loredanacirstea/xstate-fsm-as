@@ -16,27 +16,7 @@ function parseMachineStates(configStates = {}) {
         let _stateon = state.on || {};
         const stateon = Object.keys(_stateon).map(eventName => {
             const ev = _stateon[eventName];
-            const actions = [];
-            let oactions = ev.actions;
-            if (!oactions) oactions = [];
-            if (oactions instanceof Object && !(oactions instanceof Array)) {
-                oactions = [oactions];
-            }
-            for (let i = 0; i < oactions.length; i++) {
-                let ev = oactions[i].event;
-                if (ev) {
-                    ev = {type: ev.type || "", params: ev.params || []}
-                }
-                const action = {
-                    ...oactions[i],
-                    params: Object.keys(oactions[i].params || {}).map(stateName => {
-                        return {key: stateName, value: oactions[i].params[stateName]};
-                    }),
-                    event: ev,
-                }
-                actions.push(action);
-            }
-
+            const actions = parseActions(ev.actions);
             return {
                 name: eventName || "",
                 target: ev.target || "",
@@ -48,27 +28,7 @@ function parseMachineStates(configStates = {}) {
         let _stateafter = state.after || {};
         const stateafter = Object.keys(_stateafter).map(delayKey => {
             const ev = _stateafter[delayKey];
-            const actions = [];
-            let oactions = ev.actions;
-            if (!oactions) oactions = [];
-            if (oactions instanceof Object && !(oactions instanceof Array)) {
-                oactions = [oactions];
-            }
-            for (let i = 0; i < oactions.length; i++) {
-                let ev = oactions[i].event;
-                if (ev) {
-                    ev = {type: ev.type || "", params: ev.params || []}
-                }
-                const action = {
-                    ...oactions[i],
-                    params: Object.keys(oactions[i].params || {}).map(stateName => {
-                        return {key: stateName, value: oactions[i].params[stateName]};
-                    }),
-                    event: ev,
-                }
-                actions.push(action);
-            }
-
+            const actions = parseActions(ev.actions);
             return {
                 name: delayKey || "",
                 target: ev.target || "",
@@ -77,16 +37,43 @@ function parseMachineStates(configStates = {}) {
             }
         })
 
+        const entryActions = parseActions(state.entry);
+        const exitActions = parseActions(state.exit);
+
         return {
             name: key,
             after: stateafter,
             on: stateon,
-            exit: [], // TODO
-            entry: [], // TODO
+            exit: entryActions,
+            entry: exitActions,
             initial: state.initial || "",
             states: state.states ? parseMachineStates(state.states) : [],
         }
     })
+}
+
+// object or array
+function parseActions(oactions) {
+    const actions = [];
+    if (!oactions) oactions = [];
+    if (oactions instanceof Object && !(oactions instanceof Array)) {
+        oactions = [oactions];
+    }
+    for (let i = 0; i < oactions.length; i++) {
+        let ev = oactions[i].event;
+        if (ev) {
+            ev = {type: ev.type || "", params: ev.params || []}
+        }
+        const action = {
+            ...oactions[i],
+            params: Object.keys(oactions[i].params || {}).map(stateName => {
+                return {key: stateName, value: oactions[i].params[stateName]};
+            }),
+            event: ev,
+        }
+        actions.push(action);
+    }
+    return actions;
 }
 
 export function uint8ArrayToHex(arr) {

@@ -55,8 +55,8 @@ export type StateTimers = Map<string,Transition>
 export interface StateInfo {
   after: StateTimers | null;
   on: StateInfoEvents;
-  exit: Array<ActionClass>;
-  entry: Array<ActionClass>;
+  exit: Array<ActionObject>;
+  entry: Array<ActionObject>;
   initial: string;
   states: States;
 }
@@ -328,16 +328,16 @@ export class TransitionExternal {
 export class StateInfoClass implements StateInfo {
   after: StateTimers | null;
   on: StateInfoEvents;
-  exit: Array<ActionClass>;
-  entry: Array<ActionClass>;
+  exit: Array<ActionObject>;
+  entry: Array<ActionObject>;
   initial: string;
   states: States;
 
   constructor(
     after: StateTimers | null,
     on: StateInfoEvents,
-    exit: Array<ActionClass>,
-    entry: Array<ActionClass>,
+    exit: Array<ActionObject>,
+    entry: Array<ActionObject>,
     initial: string,
     childstates: States,
   ) {
@@ -356,8 +356,8 @@ export class StateInfoClassExternal {
   name: string;
   after: Array<TransitionExternal>;
   on: Array<TransitionExternal>;
-  exit: Array<ActionClass>;
-  entry: Array<ActionClass>;
+  exit: Array<ActionObject>;
+  entry: Array<ActionObject>;
   initial: string;
   states: Array<StateInfoClassExternal>;
 
@@ -365,8 +365,8 @@ export class StateInfoClassExternal {
     name: string,
     after: Array<TransitionExternal>,
     on: Array<TransitionExternal>,
-    exit: Array<ActionClass>,
-    entry: Array<ActionClass>,
+    exit: Array<ActionObject>,
+    entry: Array<ActionObject>,
     initial: string,
     childstates: Array<StateInfoClassExternal>,
   ) {

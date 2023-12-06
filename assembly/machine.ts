@@ -433,17 +433,12 @@ export class Machine implements StateMachine.Machine {
   ): State {
     const value = state.value;
     const eventObject = event;
-    // console.log("----transition-config.states-" + this.config.states.keys().join(","));
-    // const stateConfig = this.config.states.get(value);
     const stateConfig = findStateInfo(this.states, value);
-    // console.log("--findStateInfo--END=stateConfig-")
     if (!stateConfig) {
         const message = "state not found: " + value;
         wasmx.revert(String.UTF8.encode(message));
         throw new Error(message);
     }
-    // console.log("----transition-stateConfig-" + stateConfig.on.keys().join(","));
-    // console.log("-transition-event--" + eventObject.type);
 
     if (stateConfig.on) {
       if (!stateConfig.on.has(eventObject.type)) {
@@ -500,70 +495,14 @@ export class Machine implements StateMachine.Machine {
 
         // console.log("----transition-cond--" + cond.toString())
         if (cond(eventObject)) {
-          // const allActions: ActionClass[] = (
-          //   isTargetless
-          //     ? actions
-          //     : stateConfig.exit
-          //         .concat(actions)
-          //         .concat(nextStateConfig.entry)
-          //         // .filter((a) => a)
-          // )
           let allActions: ActionObject[] = [];
           if (!isTargetless) {
-            // for (let i = 0; i < stateConfig.exit.length; i++) {
-            //   allActions.push(stateConfig.exit[i]);
-            // }
-            for (let i = 0; i < actions.length; i++) {
-                const act = actions[i];
-                if (act.type === RaiseActionType) {
-                    // We are looking through parameters of the current event
-                    // and adding them in the raised event if the key values match
-                    // TODO - another way?
-                    // console.log("--raise?0-" + act.type);
-                    if (act.event === null) {
-                        const message = "raise action is missing event";
-                        wasmx.revert(String.UTF8.encode(message));
-                        throw new Error(message);
-                    }
-                    // console.log("--raise?1-" + act.event!.type);
-                    // console.log("--raise?11-" + act.event!.params.length.toString());
-                    for (let k = 0; k < act.event!.params.length; k++) {
-                        const key = act.event!.params[k].key;
-                        const value = act.event!.params[k].value;
-                        // console.log("--raise?2-param-" + key + "--" + value);
-                        let found = false;
-                        if (value.includes("()")) {
-                            // TODO have a map with all provided functions and guards
-                            if (value === "getCaller()") {
-                                act.event!.params[k].value = getAddressHex(wasmx.getCaller());
-                                found = true;
-                            }
-                        } else {
-                            for (let x = 0; x < event.params.length; x++) {
-                                if (event.params[x].key === value) {
-                                    act.event!.params[k].value = event.params[x].value;
-                                    found = true;
-                                }
-                            }
-                            const v = storage.getContextValue(value);
-                            if (!found && v) {
-                              // look in context
-                              act.event!.params[k].value = v;
-                            }
-                        }
-                    }
-                }
-                // console.log("--raise add action!-" + act.type);
-                allActions.push(act);
-            }
-            // for (let i = 0; i < stateConfig.exit.length; i++) {
-            //   allActions.push(nextStateConfig.entry[i]);
-            // }
-            // allActions = allActions.concat(stateConfig.exit);
-            // allActions = allActions.concat(nextStateConfig.entry);
+            allActions = allActions.concat(processActions(stateConfig.exit, event));
           }
-
-          // const allActionObjects: ActionObject[] = [];
+          allActions = allActions.concat(processActions(actions, event));
+          if (!isTargetless) {
+            allActions = allActions.concat(processActions(nextStateConfig.entry, event));
+          }
 
           // for (let i = 0; i < allActions.length; i++) {
           //   const action = allActions[i];
@@ -584,20 +523,22 @@ export class Machine implements StateMachine.Machine {
           const nonAssignActions = res.actions;
           const assigned = res.assigned;
 
-          let resolvedTarget = target || value;
-          // console.log("--transition--resolvedTarget-" + resolvedTarget)
+          let resolvedTarget = target;
+          if (isTargetless) {
+            resolvedTarget = value;
+          }
 
           // child states! we choose the first one
-          const stateConfig = findStateInfo(this.states, resolvedTarget);
+          const stateConfigResolved = findStateInfo(this.states, resolvedTarget);
           // console.log("--findStateInfo--END=");
-          if (!stateConfig) {
+          if (!stateConfigResolved) {
             const message = "state not found: " + resolvedTarget;
             wasmx.revert(String.UTF8.encode(message));
             throw new Error(message);
           }
           // console.log("--findStateInfo--END1=");
-          if (stateConfig.states !== null && stateConfig.states.keys().length > 0) {
-            resolvedTarget = stateConfig.states.keys()[0];
+          if (stateConfigResolved.states !== null && stateConfigResolved.states.keys().length > 0) {
+            resolvedTarget = stateConfigResolved.states.keys()[0];
           }
           // console.log("--findStateInfo--END2=");
 
@@ -669,73 +610,15 @@ export class Machine implements StateMachine.Machine {
 
       // console.log("----transition-cond--" + cond.toString())
       if (true) {
-        // const allActions: ActionClass[] = (
-        //   isTargetless
-        //     ? actions
-        //     : stateConfig.exit
-        //         .concat(actions)
-        //         .concat(nextStateConfig.entry)
-        //         // .filter((a) => a)
-        // )
         let allActions: ActionObject[] = [];
 
-        // TODO exit & entry actions if !isTargetless
-        // if (!isTargetless) {
-        //   for (let i = 0; i < stateConfig.exit.length; i++) {
-        //     allActions.push(stateConfig.exit[i]);
-        //   }
-        // }
-
-        for (let i = 0; i < actions.length; i++) {
-            const act = actions[i];
-            if (act.type === RaiseActionType) {
-                // We are looking through parameters of the current event
-                // and adding them in the raised event if the key values match
-                // TODO - another way?
-                // console.log("--raise?0-" + act.type);
-                if (act.event === null) {
-                    const message = "raise action is missing event";
-                    wasmx.revert(String.UTF8.encode(message));
-                    throw new Error(message);
-                }
-                // console.log("--raise?1-" + act.event!.type);
-                // console.log("--raise?11-" + act.event!.params.length.toString());
-                for (let k = 0; k < act.event!.params.length; k++) {
-                    const key = act.event!.params[k].key;
-                    const value = act.event!.params[k].value;
-                    // console.log("--raise?2-param-" + key + "--" + value);
-                    let found = false;
-                    if (value.includes("()")) {
-                        // TODO have a map with all provided functions and guards
-                        if (value === "getCaller()") {
-                            act.event!.params[k].value = getAddressHex(wasmx.getCaller());
-                            found = true;
-                        }
-                    } else {
-                        // for (let x = 0; x < event.params.length; x++) {
-                        //     if (event.params[x].key === value) {
-                        //         act.event!.params[k].value = event.params[x].value;
-                        //         found = true;
-                        //     }
-                        // }
-                        const v = storage.getContextValue(value);
-                        if (!found && v) {
-                          // look in context
-                          act.event!.params[k].value = v;
-                        }
-                    }
-                }
-            }
-            // console.log("--raise add action!-" + act.type);
-            allActions.push(act);
+        if (!isTargetless) {
+          allActions = allActions.concat(processActions(stateConfig.exit, new EventClass("",[])));
         }
-        // for (let i = 0; i < stateConfig.exit.length; i++) {
-        //   allActions.push(nextStateConfig.entry[i]);
-        // }
-        // allActions = allActions.concat(stateConfig.exit);
-        // allActions = allActions.concat(nextStateConfig.entry);
-
-        // const allActionObjects: ActionObject[] = [];
+        allActions = allActions.concat(processActions(actions, new EventClass("",[])));
+        if (!isTargetless) {
+          allActions = allActions.concat(processActions(nextStateConfig.entry, new EventClass("",[])));
+        }
 
         // for (let i = 0; i < allActions.length; i++) {
         //   const action = allActions[i];
@@ -757,20 +640,22 @@ export class Machine implements StateMachine.Machine {
         const nonAssignActions = res.actions;
         const assigned = res.assigned;
 
-        let resolvedTarget = target || value;
-        // console.log("--transition--resolvedTarget-" + resolvedTarget)
+        let resolvedTarget = target;
+        if (isTargetless) {
+          resolvedTarget = value;
+        }
 
         // child states! we choose the first one
-        const stateConfig = findStateInfo(this.states, resolvedTarget);
+        const stateConfigResolved = findStateInfo(this.states, resolvedTarget);
         // console.log("--findStateInfo--END=");
-        if (!stateConfig) {
+        if (!stateConfigResolved) {
           const message = "state not found: " + resolvedTarget;
           wasmx.revert(String.UTF8.encode(message));
           throw new Error(message);
         }
         // console.log("--findStateInfo--END1=");
-        if (stateConfig.states !== null && stateConfig.states.keys().length > 0) {
-          resolvedTarget = stateConfig.states.keys()[0];
+        if (stateConfigResolved.states !== null && stateConfigResolved.states.keys().length > 0) {
+          resolvedTarget = stateConfigResolved.states.keys()[0];
         }
         // console.log("--findStateInfo--END2=");
 
@@ -784,6 +669,54 @@ export class Machine implements StateMachine.Machine {
     // No transitions match
     return createUnchangedState(value);
   }
+}
+
+function processActions(actions: ActionObject[], event: EventObject): ActionObject[] {
+  let allActions: ActionObject[] = [];
+  for (let i = 0; i < actions.length; i++) {
+    const act = actions[i];
+    if (act.type === RaiseActionType) {
+        // We are looking through parameters of the current event
+        // and adding them in the raised event if the key values match
+        // TODO - another way?
+        // console.log("--raise?0-" + act.type);
+        if (act.event === null) {
+            const message = "raise action is missing event";
+            wasmx.revert(String.UTF8.encode(message));
+            throw new Error(message);
+        }
+        // console.log("--raise?1-" + act.event!.type);
+        // console.log("--raise?11-" + act.event!.params.length.toString());
+        for (let k = 0; k < act.event!.params.length; k++) {
+            const key = act.event!.params[k].key;
+            const value = act.event!.params[k].value;
+            // console.log("--raise?2-param-" + key + "--" + value);
+            let found = false;
+            if (value.includes("()")) {
+                // TODO have a map with all provided functions and guards
+                if (value === "getCaller()") {
+                    act.event!.params[k].value = getAddressHex(wasmx.getCaller());
+                    found = true;
+                }
+            } else {
+                for (let x = 0; x < event.params.length; x++) {
+                    if (event.params[x].key === value) {
+                        act.event!.params[k].value = event.params[x].value;
+                        found = true;
+                    }
+                }
+                const v = storage.getContextValue(value);
+                if (!found && v) {
+                  // look in context
+                  act.event!.params[k].value = v;
+                }
+            }
+        }
+    }
+    // console.log("--raise add action!-" + act.type);
+    allActions.push(act);
+  }
+  return allActions;
 }
 
 

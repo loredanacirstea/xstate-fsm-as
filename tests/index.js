@@ -318,7 +318,7 @@ async function runTests() {
     result = await runFn("getContextValue", machine, {key: "logs_count"});
     console.log("!!!!!getContextValue logs_count", decodeFromUtf8Array(result))
     currentState = decodeFromUtf8Array(result);
-    assert.strictEqual(currentState, "2");
+    assert.strictEqual(currentState, "1");
 
     txstr = JSON.stringify({termId: 1, leaderId: 0, prevLogIndex: 2, prevLogTerm: 0, entries: [{index: 2, termId: 1, leaderId: 0, data: ""}]})
     await runFnOwner("run", machine, {event: {type: "start", params: []}});
