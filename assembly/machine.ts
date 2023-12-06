@@ -474,10 +474,12 @@ export class Machine implements StateMachine.Machine {
         const guard = transition.guard;
         const cond = transition.cond || (() => true);
 
-        const isTargetless = target === null;
+        const isTargetless = target === null || target === "";
 
-        const nextStateValue = target || value;
-        // console.log("----transition-nextStateValue--" + nextStateValue)
+        let nextStateValue = target;
+        if (isTargetless) {
+          nextStateValue = value;
+        }
         // const nextStateConfig = this.config.states.get(nextStateValue);
 
         const nextStateConfig = findStateInfo(this.states, nextStateValue);
@@ -676,59 +678,62 @@ export class Machine implements StateMachine.Machine {
         //         // .filter((a) => a)
         // )
         let allActions: ActionObject[] = [];
-        if (!isTargetless) {
-          // for (let i = 0; i < stateConfig.exit.length; i++) {
-          //   allActions.push(stateConfig.exit[i]);
-          // }
-          for (let i = 0; i < actions.length; i++) {
-              const act = actions[i];
-              if (act.type === RaiseActionType) {
-                  // We are looking through parameters of the current event
-                  // and adding them in the raised event if the key values match
-                  // TODO - another way?
-                  // console.log("--raise?0-" + act.type);
-                  if (act.event === null) {
-                      const message = "raise action is missing event";
-                      wasmx.revert(String.UTF8.encode(message));
-                      throw new Error(message);
-                  }
-                  // console.log("--raise?1-" + act.event!.type);
-                  // console.log("--raise?11-" + act.event!.params.length.toString());
-                  for (let k = 0; k < act.event!.params.length; k++) {
-                      const key = act.event!.params[k].key;
-                      const value = act.event!.params[k].value;
-                      // console.log("--raise?2-param-" + key + "--" + value);
-                      let found = false;
-                      if (value.includes("()")) {
-                          // TODO have a map with all provided functions and guards
-                          if (value === "getCaller()") {
-                              act.event!.params[k].value = getAddressHex(wasmx.getCaller());
-                              found = true;
-                          }
-                      } else {
-                          // for (let x = 0; x < event.params.length; x++) {
-                          //     if (event.params[x].key === value) {
-                          //         act.event!.params[k].value = event.params[x].value;
-                          //         found = true;
-                          //     }
-                          // }
-                          const v = storage.getContextValue(value);
-                          if (!found && v) {
-                            // look in context
-                            act.event!.params[k].value = v;
-                          }
-                      }
-                  }
-              }
-              // console.log("--raise add action!-" + act.type);
-              allActions.push(act);
-          }
-          // for (let i = 0; i < stateConfig.exit.length; i++) {
-          //   allActions.push(nextStateConfig.entry[i]);
-          // }
-          // allActions = allActions.concat(stateConfig.exit);
-          // allActions = allActions.concat(nextStateConfig.entry);
+
+        // TODO exit & entry actions if !isTargetless
+        // if (!isTargetless) {
+        //   for (let i = 0; i < stateConfig.exit.length; i++) {
+        //     allActions.push(stateConfig.exit[i]);
+        //   }
+        // }
+
+        for (let i = 0; i < actions.length; i++) {
+            const act = actions[i];
+            if (act.type === RaiseActionType) {
+                // We are looking through parameters of the current event
+                // and adding them in the raised event if the key values match
+                // TODO - another way?
+                // console.log("--raise?0-" + act.type);
+                if (act.event === null) {
+                    const message = "raise action is missing event";
+                    wasmx.revert(String.UTF8.encode(message));
+                    throw new Error(message);
+                }
+                // console.log("--raise?1-" + act.event!.type);
+                // console.log("--raise?11-" + act.event!.params.length.toString());
+                for (let k = 0; k < act.event!.params.length; k++) {
+                    const key = act.event!.params[k].key;
+                    const value = act.event!.params[k].value;
+                    // console.log("--raise?2-param-" + key + "--" + value);
+                    let found = false;
+                    if (value.includes("()")) {
+                        // TODO have a map with all provided functions and guards
+                        if (value === "getCaller()") {
+                            act.event!.params[k].value = getAddressHex(wasmx.getCaller());
+                            found = true;
+                        }
+                    } else {
+                        // for (let x = 0; x < event.params.length; x++) {
+                        //     if (event.params[x].key === value) {
+                        //         act.event!.params[k].value = event.params[x].value;
+                        //         found = true;
+                        //     }
+                        // }
+                        const v = storage.getContextValue(value);
+                        if (!found && v) {
+                          // look in context
+                          act.event!.params[k].value = v;
+                        }
+                    }
+                }
+            }
+            // console.log("--raise add action!-" + act.type);
+            allActions.push(act);
         }
+        // for (let i = 0; i < stateConfig.exit.length; i++) {
+        //   allActions.push(nextStateConfig.entry[i]);
+        // }
+        // allActions = allActions.concat(stateConfig.exit);
+        // allActions = allActions.concat(nextStateConfig.entry);
 
         // const allActionObjects: ActionObject[] = [];
 

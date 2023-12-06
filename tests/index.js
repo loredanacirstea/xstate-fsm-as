@@ -293,10 +293,7 @@ async function runTests() {
     let txstr;
 
     // [temp] setup values
-    await runFnOwner("run", machine, {event: {type: "setupNode", params: [{key: "currentNodeId", value: "0"},{key: "nodeIPs", value: "[\"0.0.0.0:8090\",\"0.0.0.0:8091\"]"}]}});
-
-    txstr = JSON.stringify({termId: 1, leaderId: 0, prevLogIndex: 2, prevLogTerm: 0, entries: [{index: 2, termId: 1, leaderId: 0, data: ""}]})
-    await runFnOwner("run", machine, {event: {type: "receiveHeartbeat", params: [{key: "entry", value: btoa(txstr)}]}});
+    await runFnOwner("run", machine, {event: {type: "setupNode", params: [{key: "currentNodeId", value: "0"},{key: "nodeIPs", value: "[\"0.0.0.0:8090\"]"}]}});
 
     await runFnOwner("run", machine, {event: {type: "change", params: []}});
     await runFnOwner("run", machine, {event: {type: "change", params: []}});
@@ -309,18 +306,22 @@ async function runTests() {
     const tx = {from: "aa", to: "bb", funds: [], data: "1122", gas: 1000, price: 10}
     txstr = JSON.stringify(tx);
     await runFnOwner("run", machine, {event: {type: "newTransaction", params: [{key: "transaction", value: btoa(txstr)}]}});
+    await runFnOwner("run", machine, {event: {type: "newTransaction", params: [{key: "transaction", value: btoa(txstr)}]}});
 
     const bz = encodeToUtf8Array(JSON.stringify({"delay":"heartbeatTimeout","serviceId":machineId,"state":"active"}))
     await runFnOwner("eventual", machine, new Uint8Array([0, 0, 0, 0, ...bz]), "eventual");
 
     currentState = await runFn("getCurrentState", machine, {});
     console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
-    assert.strictEqual(decodeFromUtf8Array(currentState), "#RAFT-LogReplication.Leader.active");
+    assert.strictEqual(decodeFromUtf8Array(currentState), "#RAFT-LogReplication.initialized.Leader.active");
 
     result = await runFn("getContextValue", machine, {key: "logs_count"});
     console.log("!!!!!getContextValue logs_count", decodeFromUtf8Array(result))
     currentState = decodeFromUtf8Array(result);
     assert.strictEqual(currentState, "2");
+
+    txstr = JSON.stringify({termId: 1, leaderId: 0, prevLogIndex: 2, prevLogTerm: 0, entries: [{index: 2, termId: 1, leaderId: 0, data: ""}]})
+    await runFnOwner("run", machine, {event: {type: "start", params: []}});
 }
 
 runTests();

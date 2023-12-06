@@ -123,30 +123,40 @@ export function consensus(storageMap, env, logType = LOG.error) {
         if (logType > 0) {
             console.log('-host-PrepareProposal', [...new Uint8Array(buf)]);
         }
+        const req = JSON.parse(decodeFromUtf8Array(buf));
+        const resp = {txs: req.txs};
+        return encodeToUtf8Array(JSON.stringify(resp));
     }
 
     function ProcessProposal(buf) {
         if (logType > 0) {
             console.log('-host-ProcessProposal', [...new Uint8Array(buf)]);
         }
+        return encodeToUtf8Array(JSON.stringify({status: 0}));
     }
 
     function FinalizeBlock(buf) {
         if (logType > 0) {
             console.log('-host-FinalizeBlock', [...new Uint8Array(buf)]);
         }
+        const resp = {events: [], tx_results: [], validator_updates: [], consensus_param_updates: {"block":{"max_bytes":2000000,"max_gas":30000000},"evidence":{"max_age_num_blocks":302400,"max_age_duration":1814400000000000,"max_bytes":10000},"validator":{"pub_key_types":["ed25519"]}}, app_hash: "O0hNTDaj3XTRiEIeqqlo4+dxTrmV3JlHbCOnyOX24f8="}
+        return encodeToUtf8Array(JSON.stringify(resp));
     }
 
     function Commit(buf) {
         if (logType > 0) {
             console.log('-host-Commit', [...new Uint8Array(buf)]);
         }
+        const resp = {"retainHeight":"0"}
+        return encodeToUtf8Array(JSON.stringify(resp));
     }
 
     function CheckTx(buf) {
         if (logType > 0) {
             console.log('-host-CheckTx', [...new Uint8Array(buf)]);
         }
+        const resp = {code: 0, data: "", log: "", info: "", gas_wanted: 10000, gas_used: 1000, events: [], codespace: ""}
+        return encodeToUtf8Array(JSON.stringify(resp));
     }
 
     return {
