@@ -76,7 +76,8 @@ export namespace StateMachine {
     ): State;
     applyTransition(
       state: State,
-      transition: Transition
+      transition: Transition,
+      event: EventObject,
     ): State;
   }
 

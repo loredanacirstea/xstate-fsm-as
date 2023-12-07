@@ -429,125 +429,32 @@ export class Machine implements StateMachine.Machine {
 
   transition(
     state: State,
-    event: EventObject
+    eventObject: EventObject
   ): State {
     const value = state.value;
-    const eventObject = event;
     const stateConfig = findStateInfo(this.states, value);
     if (!stateConfig) {
         const message = "state not found: " + value;
         wasmx.revert(String.UTF8.encode(message));
         throw new Error(message);
     }
+    let transition: Transition | null = null;
 
     if (stateConfig.on) {
-      if (!stateConfig.on.has(eventObject.type)) {
+      if (stateConfig.on.has(eventObject.type)) {
+        transition = stateConfig.on.get(eventObject.type);
+        console.log("* transition next target: " + transition.target)
+      } else {
+        // search for transition in the parents
+
         const message = `cannot apply "${eventObject.type}" event in current "${value}" state`;
         wasmx.revert(String.UTF8.encode(message));
         throw new Error(message);
       }
-      const transition = stateConfig.on.get(eventObject.type);
-      console.log("* transition next target: " + transition.target)
+    }
 
-      const transitions: Array<Transition> = [transition];
-
-      if (stateConfig.on.has(WILDCARD)) {
-        const _trans = stateConfig.on.get(WILDCARD);
-        transitions.push(_trans);
-        // for (let i = 0; i < _trans.length; i++) {
-        //   transitions.push(_trans[i]);
-        // }
-      }
-
-      for (let i = 0; i < transitions.length; i++) {
-        const transition = transitions[i];
-        if (transition === null) {
-          return createUnchangedState(value);
-        }
-        const target = transition.target;
-        const actions = transition.actions || [];
-        const guard = transition.guard;
-        const cond = transition.cond || (() => true);
-
-        const isTargetless = target === null || target === "";
-
-        let nextStateValue = target;
-        if (isTargetless) {
-          nextStateValue = value;
-        }
-        // const nextStateConfig = this.config.states.get(nextStateValue);
-
-        const nextStateConfig = findStateInfo(this.states, nextStateValue);
-        // console.log("--findStateInfo--END=nextStateConfig-")
-        if (!nextStateConfig) {
-            const message = "state not found: " + nextStateValue;
-            wasmx.revert(String.UTF8.encode(message));
-            throw new Error(message);
-        }
-
-        // console.log("----transition-nextStateConfig--" + nextStateConfig.on.keys().join(","))
-
-        if (guard && !executeGuard(guard, event)) {
-            const message = "cannot execute transition; guard: " + guard;
-            wasmx.revert(String.UTF8.encode(message));
-            throw new Error(message);
-        }
-
-        // console.log("----transition-cond--" + cond.toString())
-        if (cond(eventObject)) {
-          let allActions: ActionObject[] = [];
-          if (!isTargetless) {
-            allActions = allActions.concat(processActions(stateConfig.exit, event));
-          }
-          allActions = allActions.concat(processActions(actions, event));
-          if (!isTargetless) {
-            allActions = allActions.concat(processActions(nextStateConfig.entry, event));
-          }
-
-          // for (let i = 0; i < allActions.length; i++) {
-          //   const action = allActions[i];
-          //   const actionFn = action.actionFn;
-          //   if (actionFn) {
-          //     const obj = toActionObject(actionFn, this.options.actions);
-          //     allActionObjects.push(obj);
-          //   }
-          //   const obj = toActionObjectFromString(action.value, this.options.actions);
-          //   allActionObjects.push(obj);
-          // }
-
-          const res = handleActions(
-            // allActionObjects,
-            allActions,
-            eventObject
-          );
-          const nonAssignActions = res.actions;
-          const assigned = res.assigned;
-
-          let resolvedTarget = target;
-          if (isTargetless) {
-            resolvedTarget = value;
-          }
-
-          // child states! we choose the first one
-          const stateConfigResolved = findStateInfo(this.states, resolvedTarget);
-          // console.log("--findStateInfo--END=");
-          if (!stateConfigResolved) {
-            const message = "state not found: " + resolvedTarget;
-            wasmx.revert(String.UTF8.encode(message));
-            throw new Error(message);
-          }
-          // console.log("--findStateInfo--END1=");
-          if (stateConfigResolved.states !== null && stateConfigResolved.states.keys().length > 0) {
-            resolvedTarget = stateConfigResolved.states.keys()[0];
-          }
-          // console.log("--findStateInfo--END2=");
-
-          console.log("* transition next target: " + resolvedTarget);
-
-          return new State(resolvedTarget, nonAssignActions, target !== value || nonAssignActions.length > 0 || assigned);
-          // matches: createMatcher(resolvedTarget)
-        }
-      }
+    if (transition !== null) {
+      return this.applyTransition(state, transition, eventObject);
     }
 
     // No transitions match
@@ -556,7 +463,8 @@ export class Machine implements StateMachine.Machine {
 
   applyTransition(
     state: State,
-    transition: Transition
+    transition: Transition,
+    eventObject: EventObject,
   ): State {
     console.log("* applyTransition: " + transition.target);
     const value = state.value;
@@ -579,45 +487,47 @@ export class Machine implements StateMachine.Machine {
 
     for (let i = 0; i < transitions.length; i++) {
       const transition = transitions[i];
-      if (transition === null) {
-        return createUnchangedState(value);
-      }
-      const target = transition.target;
-      const actions = transition.actions || [];
-      const guard = transition.guard;
-      const cond = transition.cond || (() => true);
+        if (transition === null) {
+          return createUnchangedState(value);
+        }
+        const target = transition.target;
+        const actions = transition.actions || [];
+        const guard = transition.guard;
+        const cond = transition.cond || (() => true);
 
-      const isTargetless = target === null;
+        const isTargetless = target === null || target === "";
 
-      const nextStateValue = target || value;
-      // console.log("----transition-nextStateValue--" + nextStateValue)
-      // const nextStateConfig = this.config.states.get(nextStateValue);
+        let nextStateValue = target;
+        if (isTargetless) {
+          nextStateValue = value;
+        }
 
-      const nextStateConfig = findStateInfo(this.states, nextStateValue);
-      // console.log("--findStateInfo--END=nextStateConfig-")
-      if (!nextStateConfig) {
-          const message = "state not found: " + nextStateValue;
-          wasmx.revert(String.UTF8.encode(message));
-          throw new Error(message);
-      }
+        const nextStateConfig = findStateInfo(this.states, nextStateValue);
+        // console.log("--findStateInfo--END=nextStateConfig-")
+        if (!nextStateConfig) {
+            const message = "state not found: " + nextStateValue;
+            wasmx.revert(String.UTF8.encode(message));
+            throw new Error(message);
+        }
 
       // console.log("----transition-nextStateConfig--" + nextStateConfig.on.keys().join(","))
 
-      // if (guard && !executeGuard(this.id, context, guard, event)) {
-      //     wasmx.revert(String.UTF8.encode("cannot execute transition; guard: " + guard));
-      //     throw new Error("cannot execute transition; guard: " + guard);
-      // }
+      if (guard && !executeGuard(guard, eventObject)) {
+        const message = "cannot execute transition; guard: " + guard;
+        wasmx.revert(String.UTF8.encode(message));
+        throw new Error(message);
+    }
 
-      // console.log("----transition-cond--" + cond.toString())
-      if (true) {
+
+      if (cond(eventObject)) {
         let allActions: ActionObject[] = [];
 
         if (!isTargetless) {
-          allActions = allActions.concat(processActions(stateConfig.exit, new EventClass("",[])));
+          allActions = allActions.concat(processActions(stateConfig.exit, eventObject));
         }
-        allActions = allActions.concat(processActions(actions, new EventClass("",[])));
+        allActions = allActions.concat(processActions(actions, eventObject));
         if (!isTargetless) {
-          allActions = allActions.concat(processActions(nextStateConfig.entry, new EventClass("",[])));
+          allActions = allActions.concat(processActions(nextStateConfig.entry, eventObject));
         }
 
         // for (let i = 0; i < allActions.length; i++) {
@@ -631,11 +541,10 @@ export class Machine implements StateMachine.Machine {
         //   allActionObjects.push(obj);
         // }
 
-        const eventObject: EventObject = new EventClass("", []);
         const res = handleActions(
           // allActionObjects,
           allActions,
-          eventObject,
+          eventObject
         );
         const nonAssignActions = res.actions;
         const assigned = res.assigned;
@@ -854,9 +763,10 @@ export function eventual(config: MachineExternal, intervalId: i32, args: TimerAr
   }
   // just a copied transition
   let state = storage.getCurrentState();
-  state = service.machine.applyTransition(state, transition);
+  let emptyEvent = new EventClass("", []);
+  state = service.machine.applyTransition(state, transition, emptyEvent);
   // Set new state before executing actions
   storage.setCurrentState(state);
-  executeStateActions(service, state, new EventClass("", []));
+  executeStateActions(service, state, emptyEvent);
   // TODO listeners?
 }
