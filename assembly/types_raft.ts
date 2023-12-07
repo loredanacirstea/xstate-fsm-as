@@ -144,22 +144,40 @@ export class AppendEntryResponse {
 
 // @ts-ignore
 @serializable
-export class Mempool {
+class MempoolBatch {
     txs: string[];
     cummulatedGas: i64;
-    constructor(txs: string[], cummulatedGas: i64) {
+    constructor(txs: string[] = [], cummulatedGas: i64 = 0) {
         this.txs = txs;
         this.cummulatedGas = cummulatedGas;
     }
+}
 
-    add(tx: string, gas: i64, maxGas: i64): boolean {
-        const cummulatedGas = this.cummulatedGas + gas;
-        if (maxGas >= cummulatedGas) {
-            // this.txs.push(tx);
-            this.txs = this.txs.concat([tx]);
-            this.cummulatedGas = cummulatedGas;
-            return true;
+// @ts-ignore
+@serializable
+export class Mempool {
+    txs: string[];
+    gas: i32[];
+    constructor(txs: string[] = [], gas: i32[] = []) {
+        this.txs = txs;
+        this.gas = gas;
+    }
+
+    add(tx: string, gas: i32): void {
+        this.gas = this.gas.concat([gas]);
+        this.txs = this.txs.concat([tx]);
+    }
+
+    batch(maxGas: i64): MempoolBatch {
+        let batch: MempoolBatch = new MempoolBatch([], 0);
+        for (let i = 0; i < this.txs.length; i++) {
+            if (maxGas < (batch.cummulatedGas + this.gas[i])) {
+                break;
+            }
+            batch.txs = batch.txs.concat([this.txs[i]]);
+            batch.cummulatedGas += this.gas[i];
         }
-        return false;
+        this.txs.splice(0, batch.txs.length);
+        return batch;
     }
 }

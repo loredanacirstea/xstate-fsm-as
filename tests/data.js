@@ -523,9 +523,14 @@ export const RAFTLogReplication = {
             initial: "active",
             states: {
               active: {
-                entry: {
-                  type: "sendAppendEntries",
-                },
+                entry: [
+                  {
+                    type: "sendAppendEntries",
+                  },
+                  {
+                    type: "proposeBlock",
+                  },
+                ],
                 after: {
                   heartbeatTimeout: {
                     target: "#RAFT-LogReplication.initialized.Leader.active",
@@ -558,6 +563,9 @@ export const RAFTLogReplication = {
                       },
                     ],
                   },
+                  start: {
+                    target: "active",
+                  },
                 },
               },
             },
@@ -569,9 +577,7 @@ export const RAFTLogReplication = {
           },
         },
         on: {
-          start: {
-            target: "initialized",
-          },
+          start: {},
         },
       },
     },

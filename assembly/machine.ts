@@ -245,8 +245,8 @@ function executeStateAction(
       actionsRaft.appendLog(action.params, event);
       return;
     }
-    if (actionType === "startExecution") {
-      actionsRaft.startExecution(action.params, event);
+    if (actionType === "proposeBlock") {
+      actionsRaft.proposeBlock(action.params, event);
       return;
     }
     // If action is not a local action, then it is an external action

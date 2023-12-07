@@ -39,19 +39,6 @@ export function setupNode(
     storage.setContextValue(NODE_IPS, nodeIPs);
 }
 
-export function startExecution(
-    params: ActionParam[],
-    event: EventObject,
-): void {
-    // get current height
-    const count = getLogCount();
-    if (count == 0) {
-        // we need o initialize the chain
-    }
-    // InitChain
-
-}
-
 export function processAppendEntries(
     params: ActionParam[],
     event: EventObject,
@@ -262,6 +249,19 @@ export function appendLog(
     return appendLogInternal(transaction)
 }
 
+export function proposeBlock(
+    params: ActionParam[],
+    event: EventObject,
+): void {
+    console.log("--proposeBlock--");
+    const mempool = getMempool();
+    const maxgas = getMaxBlockGas();
+    const batch = mempool.batch(maxgas);
+    // start proposal protocol
+    startBlockProposal(batch.txs, batch.cummulatedGas);
+    setMempool(mempool);
+}
+
 function getLastLog(): LogEntry {
     const index = getLogCount();
     const entry = getLogEntry(index);
@@ -299,19 +299,8 @@ export function appendLogInternal(
         return revert(`out of gas: ${parsedTx.gas}; max ${maxgas}`);
     }
     console.log("-mempool before add-")
-    let added = mempool.add(transaction, parsedTx.gas, maxgas);
-    console.log("-mempool added-" + added.toString())
-    if (added) {
-        setMempool(mempool);
-        return;
-    }
-    const newmempool = new Mempool(new Array<string>(0), 0);
-    newmempool.add(transaction, parsedTx.gas, maxgas);
-    setMempool(newmempool);
-    console.log("-mempool set-")
-
-    // start proposal protocol
-    startBlockProposal(mempool.txs, mempool.cummulatedGas);
+    mempool.add(transaction, parsedTx.gas);
+    setMempool(mempool);
 }
 
 function startBlockProposal(txs: string[], cummulatedGas: i64): void {
@@ -450,7 +439,7 @@ export function getLogCount(): i64 {
         const value = parseInt(valuestr);
         return i64(value);
     }
-    return i64(0);
+    return i64(1); // start at 1 TODO?
 }
 
 export function setLogCount(
@@ -563,7 +552,7 @@ function setNextIndexArray(arr: Array<i64>): void {
 
 export function getMempool(): Mempool {
     const mempool = storage.getContextValue(MEMPOOL_KEY);
-    if (mempool === "") return  new Mempool(new Array<string>(0), 0);
+    if (mempool === "") return  new Mempool(new Array<string>(0), new Array<i32>(0));
     return JSON.parse<Mempool>(mempool);
 }
 

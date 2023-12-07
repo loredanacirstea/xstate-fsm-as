@@ -392,8 +392,8 @@ export class ResponseCheckTx {
 // @ts-ignore
 @serializable
 export class Transaction {
-    gas: i64;
-    constructor(gas: i64) {
+    gas: i32;
+    constructor(gas: i32) {
         this.gas = gas;
     }
 }
