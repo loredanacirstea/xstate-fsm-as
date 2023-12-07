@@ -1,25 +1,28 @@
 export function parseMachine(origConfig) {
     origConfig.context = origConfig.context || {};
+    let statePath = "#" + origConfig.id;
     const newConfig = {
         ...origConfig,
         context: Object.keys(origConfig.context).map(key => {
             return {key: key, value: origConfig.context[key]};
         }),
-        states: parseMachineStates(origConfig.states),
+        states: parseMachineStates(origConfig.states, statePath),
     };
     return newConfig;
 }
 
-function parseMachineStates(configStates = {}) {
+function parseMachineStates(configStates = {}, statePath) {
     return Object.keys(configStates).map(key => {
+        const stateName = key;
         const state = configStates[key];
         let _stateon = state.on || {};
         const stateon = Object.keys(_stateon).map(eventName => {
             const ev = _stateon[eventName];
             const actions = parseActions(ev.actions);
+            const target = parseStateName(ev.target || "", statePath);
             return {
                 name: eventName || "",
-                target: ev.target || "",
+                target: target,
                 guard: ev.guard || "",
                 actions,
             }
@@ -31,7 +34,7 @@ function parseMachineStates(configStates = {}) {
             const actions = parseActions(ev.actions);
             return {
                 name: delayKey || "",
-                target: ev.target || "",
+                target: parseStateName(ev.target || "", statePath),
                 guard: ev.guard || "",
                 actions,
             }
@@ -39,15 +42,17 @@ function parseMachineStates(configStates = {}) {
 
         const entryActions = parseActions(state.entry);
         const exitActions = parseActions(state.exit);
+        const initialState = state.initial || "";
+        console.log("--initialState--", initialState)
 
         return {
-            name: key,
+            name: stateName,
             after: stateafter,
             on: stateon,
             exit: entryActions,
             entry: exitActions,
-            initial: state.initial || "",
-            states: state.states ? parseMachineStates(state.states) : [],
+            initial: initialState,
+            states: state.states ? parseMachineStates(state.states, statePath + "." + stateName) : [],
         }
     })
 }
@@ -94,6 +99,14 @@ export function raise(event, options = {}) {
     // _raise.id = options.id;
     // _raise.delay = options.delay;
     return _raise;
+}
+
+function parseStateName(stateName, statePath) {
+    console.log("--parseStateName--", stateName, statePath)
+    console.log("--parseStateName--", stateName == "", stateName[0] == "#")
+    if (stateName == "") return stateName;
+    if (stateName[0] == "#") return stateName;
+    return statePath + "." + stateName;
 }
 
 export function numToUint8Array(num) {

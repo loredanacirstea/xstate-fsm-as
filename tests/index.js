@@ -66,7 +66,7 @@ async function runTests() {
     result = await runFn("getCurrentState", machine, {});
     console.log("!!!!!currentState", decodeFromUtf8Array(result))
     currentState = decodeFromUtf8Array(result);
-    assert.strictEqual(currentState, "red");
+    assert.strictEqual(currentState, "#Semaphore.red");
 
     // Run next state
     await runFn("run", machine, {event: {type: "next", params: []}});
@@ -75,7 +75,7 @@ async function runTests() {
     // Check state has changed
     currentState = await runFn("getCurrentState", machine, {});
     console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
-    assert.strictEqual(decodeFromUtf8Array(currentState), "blue");
+    assert.strictEqual(decodeFromUtf8Array(currentState), "#Semaphore.blue");
 
     ///// machine 2
     machineConfig = parseMachine(machineConfig2Orig);
@@ -90,7 +90,7 @@ async function runTests() {
     result = await runFn("getCurrentState", machine, {});
     console.log("!!!!!currentState", decodeFromUtf8Array(result))
     currentState = decodeFromUtf8Array(result);
-    assert.strictEqual(currentState, "unlocked");
+    assert.strictEqual(currentState, "#lock-count.unlocked");
 
     // Get context value
     result = await runFn("getContextValue", machine, {key: "counter"});
@@ -105,7 +105,7 @@ async function runTests() {
     // Check state has changed
     currentState = await runFn("getCurrentState", machine, {});
     console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
-    assert.strictEqual(decodeFromUtf8Array(currentState), "unlocked");
+    assert.strictEqual(decodeFromUtf8Array(currentState), "#lock-count.unlocked");
 
     // Get context value
     result = await runFn("getContextValue", machine, {key: "counter"});
@@ -120,7 +120,7 @@ async function runTests() {
     // Check state has been locked
     currentState = await runFn("getCurrentState", machine, {});
     console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
-    assert.strictEqual(decodeFromUtf8Array(currentState), "locked");
+    assert.strictEqual(decodeFromUtf8Array(currentState), "#lock-count.locked");
 
     // Check no increment is possible
     console.log("!!!!!!! -> try increment");
@@ -128,7 +128,7 @@ async function runTests() {
         await runFn("run", machine, {event: {type: "increment", params: []}});
     } catch (e) {
         console.error(e);
-        assert.equal(e.message.includes(`cannot apply "increment" event in current "locked" state`), true);
+        assert.equal(e.message.includes(`cannot apply "increment" event in current "#lock-count.locked" state`), true);
     }
     result = await runFn("getContextValue", machine, {key: "counter"});
     console.log("!!!!!currentState", decodeFromUtf8Array(result))
@@ -151,7 +151,7 @@ async function runTests() {
     // Check state has changed
     currentState = await runFn("getCurrentState", machine, {});
     console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
-    assert.strictEqual(decodeFromUtf8Array(currentState), "unlocked");
+    assert.strictEqual(decodeFromUtf8Array(currentState), "#Untitled.unlocked");
 
     ///// machine 4 with guard
     machineConfig = parseMachine(machineWithGuard);
@@ -178,7 +178,7 @@ async function runTests() {
     // Check state has changed
     currentState = await runFn("getCurrentState", machine, {});
     console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
-    assert.strictEqual(decodeFromUtf8Array(currentState), "unlocked");
+    assert.strictEqual(decodeFromUtf8Array(currentState), "#lock-count-guard.unlocked");
 
     // machine 5 - erc20
     const admin = new Uint8Array([1,1,1,1,1,1]);
@@ -202,7 +202,7 @@ async function runTests() {
     // Check state is active
     currentState = await runFn("getCurrentState", machine, {});
     console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
-    assert.strictEqual(decodeFromUtf8Array(currentState), "active");
+    assert.strictEqual(decodeFromUtf8Array(currentState), "#ERC20.unlocked.active");
 
     // Mint tokens for admin
     await runFnOwner("run", machine, {event: {type: "mint", params: [{key: "to", value: uint8ArrayToHex(admin)}, {key: "amount", value: "100"}]}});
@@ -301,7 +301,7 @@ async function runTests() {
     // Check state is active
     currentState = await runFn("getCurrentState", machine, {});
     console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
-    assert.strictEqual(decodeFromUtf8Array(currentState), "active");
+    assert.strictEqual(decodeFromUtf8Array(currentState), "#RAFT-LogReplication.initialized.Leader.active");
 
     const tx = {from: "aa", to: "bb", funds: [], data: "1122", gas: 1000, price: 10}
     txstr = JSON.stringify(tx);
@@ -322,6 +322,9 @@ async function runTests() {
 
     txstr = JSON.stringify({termId: 1, leaderId: 0, prevLogIndex: 2, prevLogTerm: 0, entries: [{index: 2, termId: 1, leaderId: 0, data: ""}]})
     await runFnOwner("run", machine, {event: {type: "start", params: []}});
+
+    // txstr = JSON.stringify({termId: 1, leaderId: 0, prevLogIndex: 2, prevLogTerm: 0, entries: [{index: 2, termId: 1, leaderId: 0, data: ""}]})
+    // await runFnOwner("run", machine, {event: {type: "receiveHeartbeat", params: [{key: "entry", value: btoa(txstr)}]}});
 }
 
 runTests();

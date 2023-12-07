@@ -39,6 +39,19 @@ export function setupNode(
     storage.setContextValue(NODE_IPS, nodeIPs);
 }
 
+export function startExecution(
+    params: ActionParam[],
+    event: EventObject,
+): void {
+    // get current height
+    const count = getLogCount();
+    if (count == 0) {
+        // we need o initialize the chain
+    }
+    // InitChain
+
+}
+
 export function processAppendEntries(
     params: ActionParam[],
     event: EventObject,
@@ -54,10 +67,12 @@ export function processAppendEntries(
     for (let i = 0; i < entry.entries.length; i++) {
         processAppendEntry(entry.entries[i]);
     }
+    console.log("==processAppendEntries=processed entries=")
     setTermId(entry.termId);
     // TODO
     // entry.leaderId ?
     const lastCommitIndex = getCommitIndex();
+    console.log("==processAppendEntries=lastCommitIndex=" + lastCommitIndex.toString() + "==" +  entry.leaderCommit.toString())
     for (let i = lastCommitIndex + 1; i <= entry.leaderCommit; i++) {
         startBlockFinalization(i);
         setCommitIndex(i);
@@ -68,12 +83,14 @@ export function processAppendEntry(entry: LogEntry): void {
     const data = decodeBase64(entry.data);
     const processReq = JSON.parse<typestnd.RequestProcessProposal>(String.UTF8.decode(data.buffer));
     const processResp = consensuswrap.ProcessProposal(processReq);
+    console.log("==processAppendEntry=after ProcessProposal=" + processResp.status.toString())
     if (processResp.status === typestnd.ProposalStatus.REJECT) {
         // TODO - what to do here? returning just discards the block and does not return a response to the leader
         // but this node will not sync with the leader anymore
         console.error("[Follower] ProcessProposal rejected for height: " + processReq.height.toString())
         return;
     }
+    console.log("==processAppendEntry=pre appendLogEntry=")
     appendLogEntry(entry);
 }
 
@@ -109,6 +126,7 @@ function checkCommits(): void {
     const nextIndexPerNode = getNextIndexArray();
     const len = nextIndexPerNode.length;
     const majority = i64(f64.floor(f64(len) / 2) + 1);
+    console.log("--majority-" + majority.toString());
     let nextCommit = lastCommitIndex + 1;
     let count = 1; // count the leader
     for (let i = 0; i < len; i++) {
@@ -163,6 +181,7 @@ export function sendAppendEntry(
     // we send the request to the same contract
     const contract = wasmx.getAddress();
     const response = wasmxwrap.grpcRequest(nodeIp, Uint8Array.wrap(contract), dataBase64);
+    console.log("==grpcRequest response==" + response);
     const resp = JSON.parse<AppendEntryResponse>(response);
     // TODO something with resp.term
     if (resp.success) {
@@ -262,6 +281,7 @@ export function appendLogInternal(
     // check that tx is valid
     const checktx = new typestnd.RequestCheckTx(transaction, typestnd.CheckTxType.New);
     const checkResp = consensuswrap.CheckTx(checktx);
+    console.log("-checkResp-" + checkResp.code.toString())
     // we only check the code type; CheckTx should be stateless, just form checking
     if (checkResp.code !== typestnd.CodeType.Ok) {
         // transaction is not valid, we should finish
@@ -270,6 +290,7 @@ export function appendLogInternal(
 
     // add to mempool
     const mempool = getMempool();
+    console.log("-mempool-" + mempool.txs.length.toString())
     // TODO actually decode tx
     // const parsedTx = decodeTx(transaction);
     const parsedTx =  new typestnd.Transaction(15000000);
@@ -277,7 +298,9 @@ export function appendLogInternal(
     if (maxgas < parsedTx.gas) {
         return revert(`out of gas: ${parsedTx.gas}; max ${maxgas}`);
     }
+    console.log("-mempool before add-")
     let added = mempool.add(transaction, parsedTx.gas, maxgas);
+    console.log("-mempool added-" + added.toString())
     if (added) {
         setMempool(mempool);
         return;
@@ -285,6 +308,7 @@ export function appendLogInternal(
     const newmempool = new Mempool(new Array<string>(0), 0);
     newmempool.add(transaction, parsedTx.gas, maxgas);
     setMempool(newmempool);
+    console.log("-mempool set-")
 
     // start proposal protocol
     startBlockProposal(mempool.txs, mempool.cummulatedGas);
@@ -293,10 +317,13 @@ export function appendLogInternal(
 function startBlockProposal(txs: string[], cummulatedGas: i64): void {
     // PrepareProposal TODO finish
     const height = getLogCount() + 1;
+    console.log("-startBlockProposal-" + height.toString())
     // TODO correct votes?
     const localLastCommit = new typestnd.ExtendedCommitInfo(0, new Array<typestnd.ExtendedVoteInfo>(0));
     const maxTxBytes = getMaxTxBytes();
+    console.log("===maxTxBytes===" + maxTxBytes.toString())
     const time = new Date(Date.now())
+    console.log("===time===" + time.toISOString())
 
     const prepareReq = new typestnd.RequestPrepareProposal(maxTxBytes, txs, localLastCommit, [], height, time.toISOString(), "", "");
     const prepareResp = consensuswrap.PrepareProposal(prepareReq);
@@ -314,6 +341,7 @@ function startBlockProposal(txs: string[], cummulatedGas: i64): void {
         prepareReq.proposer_address,
     )
     const processResp = consensuswrap.ProcessProposal(processReq);
+    console.log("==startBlockProposal=after ProcessProposal=")
     if (processResp.status === typestnd.ProposalStatus.REJECT) {
         // TODO - what to do here? returning just discards the block and the transactions
         console.error("[Leader] ProcessProposal rejected for height: " + height.toString())
@@ -324,10 +352,13 @@ function startBlockProposal(txs: string[], cummulatedGas: i64): void {
 }
 
 function startBlockFinalization(index: i64): void {
+    console.log("--startBlockFinalization--" + index.toString())
     // get entry and apply it
     const entry = getLogEntry(index);
+    console.log("--startBlockFinalization-entry-" + entry)
     const entryobj = JSON.parse<LogEntry>(entry);
     const processReqBz = String.UTF8.decode(decodeBase64(entryobj.data).buffer);
+    console.log("--startBlockFinalization-processReqBz-" + processReqBz)
     const processReq = JSON.parse<typestnd.RequestProcessProposal>(processReqBz);
     const finalizeReq = new typestnd.RequestFinalizeBlock(
         processReq.txs,
@@ -339,8 +370,15 @@ function startBlockFinalization(index: i64): void {
         processReq.next_validators_hash,
         processReq.proposer_address,
     )
+    console.log("--startBlockFinalization-pre FinalizeBlock-")
     const finalizeResp = consensuswrap.FinalizeBlock(finalizeReq);
+    console.log("--startBlockFinalization-post FinalizeBlock-");
+    console.log("--startBlockFinalization-post FinalizeBlock-events-" + finalizeResp.events.length.toString());
+    console.log("--startBlockFinalization-post FinalizeBlock-txResults-" + finalizeResp.tx_results.length.toString());
+    console.log("--startBlockFinalization-post FinalizeBlock-validatorUpdates-" + finalizeResp.validator_updates.length.toString());
+
     entryobj.result = JSON.stringify<typestnd.ResponseFinalizeBlock>(finalizeResp);
+    console.log("--startBlockFinalization-post FinalizeBlock stringified-" + entryobj.result);
 
     const commitResponse = consensuswrap.Commit();
     // TODO commitResponse.retainHeight
@@ -350,6 +388,7 @@ function startBlockFinalization(index: i64): void {
 }
 
 function appendLogInternalVerified(processReq: typestnd.RequestProcessProposal): void {
+    console.log("==appendLogInternalVerified==")
     // const hash = "";
     // const parentHash = "";
     // TODO verify transaction data
@@ -370,6 +409,12 @@ function appendLogInternalVerified(processReq: typestnd.RequestProcessProposal):
 export function appendLogEntry(
     entry: LogEntry,
 ): void {
+    console.log("==appendLogEntry0==");
+    console.log("==appendLogEntry0=index=" + entry.index.toString());
+    console.log("==appendLogEntry0=data=" + entry.data);
+    console.log("==appendLogEntry0=leaderId=" + entry.leaderId.toString());
+    console.log("==appendLogEntry0=termId=" + entry.termId.toString());
+    console.log("==appendLogEntry0=result=" + entry.result);
     console.log("==appendLogEntry==" + JSON.stringify<LogEntry>(entry));
     const index = getLogCount() + 1;
     // TODO entry may be sent multiple times, we need to see if we already added it
@@ -392,6 +437,7 @@ export function setLogEntry(
     index: i64,
     entry: string,
 ): void {
+    console.log("--setLogEntry--" + index.toString() + "--" + entry);
     const key = getLogEntryKey(index);
     storage.setContextValue(key, entry);
 }
@@ -533,6 +579,7 @@ export function getMaxBlockGas(): i64 {
 
 export function getMaxTxBytes(): i64 {
     const value = storage.getContextValue(MAX_TX_BYTES);
+    console.log("==getMaxTxBytes==" + value);
     if (value === "") return i64(0);
     return parseInt64(value);
 }

@@ -9,7 +9,7 @@ export const machineConfigSemaphore = {
             name: "uninitialized",
             on: [{
                 name: "initialize",
-                target: "red",
+                target: "#Semaphore.red",
                 guard: "",
                 actions: [],
             }],
@@ -24,7 +24,7 @@ export const machineConfigSemaphore = {
             on: [
                 {
                     name: "next",
-                    target: "blue",
+                    target: "#Semaphore.blue",
                     guard: "",
                     actions: [],
                 },
@@ -40,7 +40,7 @@ export const machineConfigSemaphore = {
             on: [
                 {
                     name: "next",
-                    target: "red",
+                    target: "#Semaphore.red",
                     guard: "",
                     actions: [],
                 },
@@ -63,7 +63,7 @@ export const machineConfig2 = {
             name: "uninitialized",
             on: [{
                 name: "initialize",
-                target: "unlocked",
+                target: "#Lock/unlock.unlocked",
                 guard: "",
                     actions: [],
             }],
@@ -78,7 +78,7 @@ export const machineConfig2 = {
             on: [
                 {
                     name: "lock",
-                    target: "lock",
+                    target: "#Lock/unlock.lock",
                     guard: "",
                     actions: [],
                 },
@@ -116,7 +116,7 @@ export const machineConfig2 = {
             on: [
                 {
                     name: "unlock",
-                    target: "unlock",
+                    target: "#Lock/unlock.unlock",
                     guard: "",
                     actions: [],
                 },

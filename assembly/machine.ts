@@ -51,6 +51,9 @@ export function instantiate(
     INIT_EVENT as EventObject
   );
   const initialActions = res.actions;
+  if (initialState.at(0) != "#") {
+    initialState = `#${config.id}.${initialState}`
+  }
   const newstate = new State(initialState, initialActions, false);
   storage.setCurrentState(newstate);
 
@@ -240,6 +243,10 @@ function executeStateAction(
     }
     if (actionType === "appendLog") {
       actionsRaft.appendLog(action.params, event);
+      return;
+    }
+    if (actionType === "startExecution") {
+      actionsRaft.startExecution(action.params, event);
       return;
     }
     // If action is not a local action, then it is an external action
@@ -446,10 +453,13 @@ export class Machine implements StateMachine.Machine {
         console.log("* transition next target: " + transition.target)
       } else {
         // search for transition in the parents
+        transition = findTransitionInParents(this.states, value, eventObject);
 
-        const message = `cannot apply "${eventObject.type}" event in current "${value}" state`;
-        wasmx.revert(String.UTF8.encode(message));
-        throw new Error(message);
+        if (transition == null) {
+          const message = `cannot apply "${eventObject.type}" event in current "${value}" state`;
+          wasmx.revert(String.UTF8.encode(message));
+          throw new Error(message);
+        }
       }
     }
 
@@ -564,7 +574,12 @@ export class Machine implements StateMachine.Machine {
         }
         // console.log("--findStateInfo--END1=");
         if (stateConfigResolved.states !== null && stateConfigResolved.states.keys().length > 0) {
-          resolvedTarget = stateConfigResolved.states.keys()[0];
+          // initial key
+          let initialState = stateConfigResolved.states.keys()[0];
+          if (initialState.at(0) != "#") {
+            initialState = `${resolvedTarget}.${initialState}`
+          }
+          resolvedTarget = initialState;
         }
         // console.log("--findStateInfo--END2=");
 
@@ -673,6 +688,29 @@ export function runInternal(config: MachineExternal, event: EventClass): ArrayBu
 export function loadServiceFromConfig(config: MachineExternal): Service {
     const status = storage.getCurrentStatus();
     return new ServiceExternal(config, status).toInternal();
+}
+
+function findTransitionInParents(states: States, stateName: string, eventObject: EventObject): Transition | null {
+  // all state values must be absolute
+  if (stateName.at(0) != "#") {
+    revert("state must be absolute: " + stateName);
+    return null;
+  }
+  let statePath = stateName.substring(1).split(".").slice(1);
+  statePath.pop(); // remove current kid
+  return findTransitionInternal(states, statePath, eventObject)
+}
+
+function findTransitionInternal(states: States, statePath: string[], eventObject: EventObject): Transition | null {
+  const stateConfig = findStateInfoByPath(states, statePath);
+  if (stateConfig != null && stateConfig.on.has(eventObject.type)) {
+    return stateConfig.on.get(eventObject.type);
+  }
+  if (statePath.length == 0) {
+    return null;
+  }
+  statePath.pop(); // remove current kid
+  return findTransitionInternal(states, statePath, eventObject);
 }
 
 // TODO: nested state names as paths unlocked.active.
