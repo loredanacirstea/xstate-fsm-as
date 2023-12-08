@@ -456,11 +456,11 @@ export const RAFTLogReplication = {
     context: {
       log: "",
       nodeIPs: "[]",
-      nextIndex: "[1,1]",
-      matchIndex: "[0,0]",
-      commitIndex: "0",
+      nextIndex: "[]",
+      matchIndex: "[]",
+      commitIndex: "",
       currentTerm: "0",
-      lastApplied: "0",
+      lastApplied: "",
       max_tx_bytes: "65536",
       prevLogIndex: "0",
       currentNodeId: "0",
@@ -529,6 +529,9 @@ export const RAFTLogReplication = {
                   },
                   {
                     type: "proposeBlock",
+                  },
+                  {
+                    type: "commitBlocks",
                   },
                 ],
                 after: {

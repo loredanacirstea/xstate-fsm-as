@@ -249,6 +249,10 @@ function executeStateAction(
       actionsRaft.proposeBlock(action.params, event);
       return;
     }
+    if (actionType === "commitBlocks") {
+      actionsRaft.commitBlocks(action.params, event);
+      return;
+    }
     // If action is not a local action, then it is an external action
     const success = processExternalCall(service, state, event, action);
     if (!success) {

@@ -13,6 +13,9 @@ import { hexToUint8Array, revert, parseInt32, parseInt64 } from "./utils";
 import { Block, LogEntry, Transaction, TransactionResponse, AppendEntry, AppendEntryResponse, Mempool } from "./types_raft";
 import * as typestnd from "./types_tendermint";
 
+// start at 0 TODO?
+const LOG_START = 1;
+
 export function setupNode(
     params: ActionParam[],
     event: EventObject,
@@ -37,6 +40,16 @@ export function setupNode(
     }
     storage.setContextValue(CURRENT_NODE_ID, currentNodeId);
     storage.setContextValue(NODE_IPS, nodeIPs);
+
+    const ips = JSON.parse<string[]>(nodeIPs);
+    const nextIndex: Array<i64> = [];
+    const matchIndex: Array<i64> = [];
+    for (let i = 0; i < ips.length; i++) {
+        nextIndex[i] = LOG_START + 1; // TODO ?
+        matchIndex[i] = LOG_START; // TODO ?
+    }
+    setNextIndexArray(nextIndex);
+    setMatchIndexArray(matchIndex);
 }
 
 export function processAppendEntries(
@@ -102,8 +115,12 @@ export function sendAppendEntries(
         if (nodeId === i) continue;
         sendAppendEntry(i, ips[i]);
     }
+}
 
-    // check if we can commit state
+export function commitBlocks(
+    params: ActionParam[],
+    event: EventObject,
+): void {
     checkCommits();
 }
 
@@ -115,9 +132,8 @@ function checkCommits(): void {
     const majority = i64(f64.floor(f64(len) / 2) + 1);
     console.log("--majority-" + majority.toString());
     let nextCommit = lastCommitIndex + 1;
-    let count = 1; // count the leader
+    let count = 1; // leader
     for (let i = 0; i < len; i++) {
-        // leader's index will always be 0, so not included below
         // next index is the next index to send, so we use >
         if (nextIndexPerNode.at(i) > nextCommit) {
             count += 1;
@@ -439,7 +455,7 @@ export function getLogCount(): i64 {
         const value = parseInt(valuestr);
         return i64(value);
     }
-    return i64(1); // start at 1 TODO?
+    return i64(LOG_START);
 }
 
 export function setLogCount(
@@ -463,16 +479,25 @@ const NODE_IPS = "nodeIPs";
 const TERM_ID = "currentTerm";
 const CURRENT_NODE_ID = "currentNodeId";
 const HEARTBEAT_TIMEOUT = "heartbeatTimeout";
+
+//// Persistent state on all servers:
+// currentTerm
+// votedFor
+// log[]
+
+//// Volatile state on all servers:
 // index of highest log entry applied to state machine (initialized to 0, increases monotonically)
 const LAST_APPLIED = "lastApplied";
 // index of highest log entry known to be committed (initialized to 0, increases monotonically)
 const COMMIT_INDEX = "commitIndex";
 
-//for each server, index of highest log entry known to be replicated on server (initialized to 0, increases monotonically)
+//// Volatile state on leaders
+// for each server, index of highest log entry known to be replicated on server (initialized to 0, increases monotonically)
 const MATCH_INDEX_ARRAY = "matchIndex";
 // for each server, index of the next log entry to send to that server (initialized to leader last log index + 1)
 const NEXT_INDEX_ARRAY = "nextIndex";
 
+//// Cosmos-specific
 const MEMPOOL_KEY = "mempool";
 
 const MAX_BLOCK_GAS = "max_block_gas";
@@ -483,10 +508,9 @@ const MAX_TX_BYTES = "max_tx_bytes";
 // const PREV_LOG_INDEX = "prevLogIndex";
 
 function getTermId(): i32 {
-    const valuestr = storage.getContextValue(TERM_ID);
-    if (!valuestr) revert(TERM_ID + " missing");
-    const value = parseInt(valuestr);
-    return i32(value);
+    const value = storage.getContextValue(TERM_ID);
+    if (value === "") return i32(0);
+    return parseInt32(value);
 }
 
 function setTermId(value: i32): void {
@@ -494,16 +518,15 @@ function setTermId(value: i32): void {
 }
 
 function getCurrentNodeId(): i32 {
-    const valuestr = storage.getContextValue(CURRENT_NODE_ID);
-    if (!valuestr) revert(CURRENT_NODE_ID + " missing");
-    const value = parseInt(valuestr);
-    return i32(value);
+    const value = storage.getContextValue(CURRENT_NODE_ID);
+    if (value === "") return i32(0);
+    return parseInt32(value);
 }
 
 function getLastApplied(): i64 {
-    const valuestr = storage.getContextValue(LAST_APPLIED);
-    if (!valuestr) revert(LAST_APPLIED + " missing");
-   return parseInt64(valuestr);
+    const value = storage.getContextValue(LAST_APPLIED);
+    if (value === "") return i64(LOG_START);
+    return parseInt64(value);
 }
 
 function setLastApplied(value: i64): void {
@@ -511,10 +534,9 @@ function setLastApplied(value: i64): void {
 }
 
 function getCommitIndex(): i64 {
-    const valuestr = storage.getContextValue(COMMIT_INDEX);
-    if (!valuestr) revert(COMMIT_INDEX + " missing");
-    const value = parseInt(valuestr);
-    return i64(value);
+    const value = storage.getContextValue(COMMIT_INDEX);
+    if (value === "") return i64(LOG_START);
+    return parseInt64(value);
 }
 
 function setCommitIndex(index: i64): void {
@@ -523,8 +545,9 @@ function setCommitIndex(index: i64): void {
 
 function getMatchIndexArray(): Array<i64> {
     const valuestr = storage.getContextValue(MATCH_INDEX_ARRAY);
-    if (!valuestr) revert(MATCH_INDEX_ARRAY + " missing");
-    const value = JSON.parse<Array<i64>>(valuestr);
+    let value: Array<i64> = [];
+    if (valuestr === "") return value;
+    value = JSON.parse<Array<i64>>(valuestr);
     return value;
 }
 
@@ -534,15 +557,17 @@ function setMatchIndexArray(value: Array<i64>): void {
 
 function getNextIndexArray(): Array<i64> {
     const valuestr = storage.getContextValue(NEXT_INDEX_ARRAY);
-    if (!valuestr) revert(NEXT_INDEX_ARRAY + " missing");
-    const value = JSON.parse<Array<i64>>(valuestr);
+    let value: Array<i64> = [];
+    if (valuestr === "") return value;
+    value = JSON.parse<Array<i64>>(valuestr);
     return value;
 }
 
 function getNodeIPs(): Array<string> {
     const valuestr = storage.getContextValue(NODE_IPS);
-    if (!valuestr) revert(NODE_IPS + " missing");
-    const value = JSON.parse<Array<string>>(valuestr);
+    let value: Array<string> = [];
+    if (valuestr === "") return value;
+    value = JSON.parse<Array<string>>(valuestr);
     return value;
 }
 

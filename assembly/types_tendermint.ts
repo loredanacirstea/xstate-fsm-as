@@ -326,9 +326,9 @@ export class ResponseFinalizeBlock {
 // @ts-ignore
 @serializable
 export class ResponseCommit {
-	retain_height: i64;
+	retainHeight: i64;
     constructor(retainHeight: i64) {
-        this.retain_height = retainHeight;
+        this.retainHeight = retainHeight;
     }
 }
 
