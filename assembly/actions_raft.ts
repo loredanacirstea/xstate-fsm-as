@@ -16,6 +16,12 @@ import * as typestnd from "./types_tendermint";
 // start at 0 TODO?
 const LOG_START = 1;
 
+// LEADER:
+// new tx -> check tx -> add to mempool
+// proposeBlock -> mempool batch -> startBlockProposal -> propose block -> process block -> save to logs
+// commitBlocks -> startBlockFinalization -> finalize block -> commit -> save to logs
+// commitBlocks ->
+
 export function setupNode(
     params: ActionParam[],
     event: EventObject,
@@ -126,12 +132,17 @@ export function commitBlocks(
 
 function checkCommits(): void {
     const lastCommitIndex = getLastApplied();
+    // all commited + uncommited logs
+    const lastLogIndex = getLogCount();
     const currentNodeId = getCurrentNodeId();
     const nextIndexPerNode = getNextIndexArray();
     const len = nextIndexPerNode.length;
     const majority = i64(f64.floor(f64(len) / 2) + 1);
     console.log("--majority-" + majority.toString());
     let nextCommit = lastCommitIndex + 1;
+    if (lastLogIndex < nextCommit) {
+        return;
+    }
     let count = 1; // leader
     for (let i = 0; i < len; i++) {
         // next index is the next index to send, so we use >
@@ -145,7 +156,7 @@ function checkCommits(): void {
         // update last commited!
         setLastApplied(nextCommit);
         // We try the next index
-        checkCommits();
+        // checkCommits(); // we rely on the eventual transaction
     }
 }
 
@@ -385,11 +396,12 @@ function startBlockFinalization(index: i64): void {
     entryobj.result = JSON.stringify<typestnd.ResponseFinalizeBlock>(finalizeResp);
     console.log("--startBlockFinalization-post FinalizeBlock stringified-" + entryobj.result);
 
+    // update existing log entry before the commit
+    setLogEntryObj(entryobj);
+
     const commitResponse = consensuswrap.Commit();
     // TODO commitResponse.retainHeight
     // Tendermint removes all data for heights lower than `retain_height`
-
-    setLogEntryObj(entryobj);
 }
 
 function appendLogInternalVerified(processReq: typestnd.RequestProcessProposal): void {
@@ -407,20 +419,12 @@ function appendLogInternalVerified(processReq: typestnd.RequestProcessProposal):
     const termId = getTermId();
     const leaderId = getCurrentNodeId();
     const entry = new LogEntry(processReq.height, termId, leaderId, blockDataBase64, "");
-    setLogCount(entry.index);
-    setLogEntryObj(entry);
+    appendLogEntry(entry);
 }
 
 export function appendLogEntry(
     entry: LogEntry,
 ): void {
-    console.log("==appendLogEntry0==");
-    console.log("==appendLogEntry0=index=" + entry.index.toString());
-    console.log("==appendLogEntry0=data=" + entry.data);
-    console.log("==appendLogEntry0=leaderId=" + entry.leaderId.toString());
-    console.log("==appendLogEntry0=termId=" + entry.termId.toString());
-    console.log("==appendLogEntry0=result=" + entry.result);
-    console.log("==appendLogEntry==" + JSON.stringify<LogEntry>(entry));
     const index = getLogCount() + 1;
     // TODO entry may be sent multiple times, we need to see if we already added it
     // and just return if already saved
@@ -476,12 +480,11 @@ export function getLogCountKey(): string {
 
 /// Context values
 const NODE_IPS = "nodeIPs";
-const TERM_ID = "currentTerm";
 const CURRENT_NODE_ID = "currentNodeId";
 const HEARTBEAT_TIMEOUT = "heartbeatTimeout";
 
 //// Persistent state on all servers:
-// currentTerm
+const TERM_ID = "currentTerm";
 // votedFor
 // log[]
 
