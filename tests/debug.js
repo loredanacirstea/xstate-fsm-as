@@ -58,6 +58,11 @@ async function instantiate(module, imports = {}) {
         value = __liftBuffer(value >>> 0);
         __module0.log(value);
       },
+      sha256(value) {
+        // assembly/wasmx/sha256(~lib/arraybuffer/ArrayBuffer) => ~lib/arraybuffer/ArrayBuffer
+        value = __liftBuffer(value >>> 0);
+        return __lowerBuffer(__module0.sha256(value)) || __notnull();
+      },
       call(data) {
         // assembly/wasmx/call(~lib/arraybuffer/ArrayBuffer) => ~lib/arraybuffer/ArrayBuffer
         data = __liftBuffer(data >>> 0);

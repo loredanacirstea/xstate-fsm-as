@@ -133,3 +133,10 @@ export function call(req: CallRequest): CallResponse {
     const responsebz = wasmx.call(String.UTF8.encode(requestStr));
     return JSON.parse<CallResponse>(String.UTF8.decode(responsebz));
 }
+
+// base64 encoded data
+export function sha256(base64Data: string): string {
+    const buf = decodeBase64(base64Data);
+    const res = wasmx.sha256(buf.buffer);
+    return encodeBase64(Uint8Array.wrap(res));
+}

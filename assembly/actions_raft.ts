@@ -19,7 +19,7 @@ const LOG_START = 1;
 // LEADER:
 // new tx -> check tx -> add to mempool
 // proposeBlock -> mempool batch -> startBlockProposal -> propose block -> process block -> save to logs
-// commitBlocks -> startBlockFinalization -> finalize block -> commit -> save to logs
+// commitBlocks -> startBlockFinalization -> finalize block -> commit -> save to logs + index transactions
 // commitBlocks ->
 
 export function setupNode(
@@ -280,7 +280,6 @@ export function proposeBlock(
     params: ActionParam[],
     event: EventObject,
 ): void {
-    console.log("--proposeBlock--");
     const mempool = getMempool();
     const maxgas = getMaxBlockGas();
     const batch = mempool.batch(maxgas);
@@ -337,9 +336,7 @@ function startBlockProposal(txs: string[], cummulatedGas: i64): void {
     // TODO correct votes?
     const localLastCommit = new typestnd.ExtendedCommitInfo(0, new Array<typestnd.ExtendedVoteInfo>(0));
     const maxTxBytes = getMaxTxBytes();
-    console.log("===maxTxBytes===" + maxTxBytes.toString())
     const time = new Date(Date.now())
-    console.log("===time===" + time.toISOString())
 
     const prepareReq = new typestnd.RequestPrepareProposal(maxTxBytes, txs, localLastCommit, [], height, time.toISOString(), "", "");
     const prepareResp = consensuswrap.PrepareProposal(prepareReq);
@@ -357,7 +354,6 @@ function startBlockProposal(txs: string[], cummulatedGas: i64): void {
         prepareReq.proposer_address,
     )
     const processResp = consensuswrap.ProcessProposal(processReq);
-    console.log("==startBlockProposal=after ProcessProposal=")
     if (processResp.status === typestnd.ProposalStatus.REJECT) {
         // TODO - what to do here? returning just discards the block and the transactions
         console.error("[Leader] ProcessProposal rejected for height: " + height.toString())
@@ -386,18 +382,25 @@ function startBlockFinalization(index: i64): void {
         processReq.next_validators_hash,
         processReq.proposer_address,
     )
-    console.log("--startBlockFinalization-pre FinalizeBlock-")
     const finalizeResp = consensuswrap.FinalizeBlock(finalizeReq);
     console.log("--startBlockFinalization-post FinalizeBlock-");
-    console.log("--startBlockFinalization-post FinalizeBlock-events-" + finalizeResp.events.length.toString());
-    console.log("--startBlockFinalization-post FinalizeBlock-txResults-" + finalizeResp.tx_results.length.toString());
-    console.log("--startBlockFinalization-post FinalizeBlock-validatorUpdates-" + finalizeResp.validator_updates.length.toString());
 
-    entryobj.result = JSON.stringify<typestnd.ResponseFinalizeBlock>(finalizeResp);
+    const resultstr = JSON.stringify<typestnd.ResponseFinalizeBlock>(finalizeResp);
+    const resultBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(resultstr)));
+    entryobj.result = resultBase64;
     console.log("--startBlockFinalization-post FinalizeBlock stringified-" + entryobj.result);
 
-    // update existing log entry before the commit
+    // ! make all state changes before the commit
+
+    // update existing log entry
     setLogEntryObj(entryobj);
+
+    // index transactions
+    for (let i = 0; i < finalizeReq.txs.length; i++) {
+        // store IndexedTransaction
+        const hash = wasmxwrap.sha256(finalizeReq.txs[i]);
+        setIndexedTransaction(new typestnd.IndexedTransaction(finalizeReq.height, i), hash)
+    }
 
     const commitResponse = consensuswrap.Commit();
     // TODO commitResponse.retainHeight
@@ -510,6 +513,9 @@ const MAX_TX_BYTES = "max_tx_bytes";
 // index of log entry immediately preceding new ones
 // const PREV_LOG_INDEX = "prevLogIndex";
 
+//// blockchain
+const TX_INDEXER = "tx_";
+
 function getTermId(): i32 {
     const value = storage.getContextValue(TERM_ID);
     if (value === "") return i32(0);
@@ -596,11 +602,23 @@ export function getMaxBlockGas(): i64 {
 
 export function getMaxTxBytes(): i64 {
     const value = storage.getContextValue(MAX_TX_BYTES);
-    console.log("==getMaxTxBytes==" + value);
     if (value === "") return i64(0);
     return parseInt64(value);
 }
 
 export function setMaxTxBytes(value: i64): void {
     storage.setContextValue(MAX_TX_BYTES, value.toString());
+}
+
+function getIndexedTransaction(hash: string): typestnd.IndexedTransaction {
+    const value = storage.getContextValue(keyIndexedTransaction(hash));
+    return JSON.parse<typestnd.IndexedTransaction>(value);
+}
+
+function setIndexedTransaction(tx: typestnd.IndexedTransaction, hash: string): void {
+    storage.setContextValue(keyIndexedTransaction(hash), JSON.stringify<typestnd.IndexedTransaction>(tx));
+}
+
+function keyIndexedTransaction(hash: string): string {
+    return TX_INDEXER + hash;
 }

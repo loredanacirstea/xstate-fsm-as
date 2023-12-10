@@ -203,7 +203,25 @@ export class Event {
 
 // @ts-ignore
 @serializable
-export class ExecTxResult {
+export class ExecTxResult { // same as ResponseCheckTx
+    code: u32
+	data: string // base64
+	log: string
+	info: string
+	gas_wanted: i64
+	gas_used: i64
+	events: Event[]
+	codespace: string
+    constructor(code: u32, data: string, log: string, info: string, gas_wanted: i64, gas_used: i64, events: Event[], codespace: string) {
+        this.code = code;
+        this.data = data;
+        this.log = log;
+        this.info = info;
+        this.gas_wanted = gas_wanted;
+        this.gas_used = gas_used;
+        this.events = events;
+        this.codespace = codespace;
+    }
 }
 
 // @ts-ignore
@@ -368,26 +386,7 @@ export enum CodeType {
 
 // @ts-ignore
 @serializable
-export class ResponseCheckTx {
-	code: u32
-	data: string // base64
-	log: string
-	info: string
-	gas_wanted: i64
-	gas_used: i64
-	events: Event[]
-	codespace: string
-    constructor(code: u32, data: string, log: string, info: string, gas_wanted: i64, gas_used: i64, events: Event[], codespace: string) {
-        this.code = code;
-        this.data = data;
-        this.log = log;
-        this.info = info;
-        this.gas_wanted = gas_wanted;
-        this.gas_used = gas_used;
-        this.events = events;
-        this.codespace = codespace;
-    }
-}
+export class ResponseCheckTx extends ExecTxResult {}
 
 // @ts-ignore
 @serializable
@@ -395,6 +394,32 @@ export class Transaction {
     gas: i32;
     constructor(gas: i32) {
         this.gas = gas;
+    }
+}
+
+// @ts-ignore
+@serializable
+export class TxResult {
+	height: i64
+	index: u32
+	tx: string // base64
+	result: ExecTxResult
+    constructor(height: i64, index: u32, tx: string, result: ExecTxResult) {
+        this.height = height;
+        this.index = index;
+        this.tx = tx;
+        this.result = result;
+    }
+}
+
+// @ts-ignore
+@serializable
+export class IndexedTransaction {
+    height: i64
+	index: u32
+    constructor(height: i64, index: u32) {
+        this.height = height;
+        this.index = index;
     }
 }
 
