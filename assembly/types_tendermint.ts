@@ -246,17 +246,6 @@ export class BlockParams {
 
 // @ts-ignore
 @serializable
-export class Duration {
-    seconds: i64
-	nanos: i32
-    constructor(seconds: i64 , nanos: i32) {
-        this.seconds = seconds
-        this.nanos = nanos
-    }
-}
-
-// @ts-ignore
-@serializable
 export class EvidenceParams {
     // Max age of evidence, in blocks.
 	//
@@ -268,12 +257,12 @@ export class EvidenceParams {
 	// It should correspond with an app's "unbonding period" or other similar
 	// mechanism for handling [Nothing-At-Stake
 	// attacks](https://github.com/ethereum/wiki/wiki/Proof-of-Stake-FAQ#what-is-the-nothing-at-stake-problem-and-how-can-it-be-fixed).
-	max_age_duration: Duration
+	max_age_duration: i64
 	// This sets the maximum size of total evidence in bytes that can be committed in a single block.
 	// and should fall comfortably under the max block bytes.
 	// Default is 1048576 or 1MB
 	max_bytes: i64
-    constructor(max_age_num_blocks: i64, max_age_duration: Duration, max_bytes: i64) {
+    constructor(max_age_num_blocks: i64, max_age_duration: i64, max_bytes: i64) {
         this.max_age_num_blocks = max_age_num_blocks;
         this.max_age_duration = max_age_duration;
         this.max_bytes = max_bytes;
