@@ -43,6 +43,20 @@ export function parseUint8ArrayToI32BigEndian(buff: Uint8Array): i32 {
     return view.getInt32(0, false);
 }
 
+export function i32ToUint8ArrayBE(value: i32): Uint8Array {
+    const v = new ArrayBuffer(4);
+    var view = new DataView(v, 0);
+    view.setInt32(0, value, false);
+    return Uint8Array.wrap(v);
+}
+
+export function i64ToUint8ArrayBE(value: i64): Uint8Array {
+    const v = new ArrayBuffer(8);
+    var view = new DataView(v, 0);
+    view.setInt64(0, value, false);
+    return Uint8Array.wrap(v);
+}
+
 export function revert(message: string): void {
     wasmx.revert(String.UTF8.encode(message));
     throw new Error(message);

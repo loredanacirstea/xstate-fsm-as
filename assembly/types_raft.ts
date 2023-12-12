@@ -1,5 +1,4 @@
 import { JSON } from "json-as/assembly";
-import { RequestProcessProposal, ResponseFinalizeBlock } from "./types_tendermint";
 
 // @ts-ignore
 @serializable
@@ -8,56 +7,17 @@ export class LogEntry {
     termId: i32;
     leaderId: i32;
     data: string; // base64-encoded RequestProcessProposal
+    header: string // base64-encoded Header
+    commit: string // base64-encoded commit info
     result: string // base64-encoded ResponseFinalizeBlock
-    constructor(index: i64, termId: i32, leaderId: i32, data: string, result: string) {
+    constructor(index: i64, termId: i32, leaderId: i32, data: string, header: string, commit: string, result: string) {
         this.index = index;
         this.termId = termId;
         this.leaderId = leaderId;
         this.data = data;
+        this.header = header;
+        this.commit = commit;
         this.result = result;
-    }
-}
-
-// @ts-ignore
-@serializable
-export class LogEntryInternal {
-    index: i64;
-    termId: i32;
-    leaderId: i32;
-    data: RequestProcessProposal;
-    result: ResponseFinalizeBlock;
-    constructor(index: i64, termId: i32, leaderId: i32, data: RequestProcessProposal, result: ResponseFinalizeBlock) {
-        this.index = index;
-        this.termId = termId;
-        this.leaderId = leaderId;
-        this.data = data;
-        this.result = result;
-    }
-}
-
-// @ts-ignore
-@serializable
-export class Block {
-    hash: string;
-    parentHash: string;
-    transactions: Array<string>; // base64-encoded JSON transaction data
-    constructor(hash: string, parentHash: string, transactions: Array<string>) {
-        this.hash = hash;
-        this.parentHash = parentHash;
-        this.transactions = transactions;
-    }
-}
-
-// @ts-ignore
-@serializable
-export class BlockInternal {
-    hash: string;
-    parentHash: string;
-    transactions: Array<Transaction>;
-    constructor(hash: string, parentHash: string, transactions: Array<Transaction>) {
-        this.hash = hash;
-        this.parentHash = parentHash;
-        this.transactions = transactions;
     }
 }
 
@@ -139,45 +99,5 @@ export class AppendEntryResponse {
     constructor(termId: i32, success: bool) {
         this.termId = termId;
         this.success = success;
-    }
-}
-
-// @ts-ignore
-@serializable
-class MempoolBatch {
-    txs: string[];
-    cummulatedGas: i64;
-    constructor(txs: string[] = [], cummulatedGas: i64 = 0) {
-        this.txs = txs;
-        this.cummulatedGas = cummulatedGas;
-    }
-}
-
-// @ts-ignore
-@serializable
-export class Mempool {
-    txs: string[];
-    gas: i32[];
-    constructor(txs: string[] = [], gas: i32[] = []) {
-        this.txs = txs;
-        this.gas = gas;
-    }
-
-    add(tx: string, gas: i32): void {
-        this.gas = this.gas.concat([gas]);
-        this.txs = this.txs.concat([tx]);
-    }
-
-    batch(maxGas: i64): MempoolBatch {
-        let batch: MempoolBatch = new MempoolBatch([], 0);
-        for (let i = 0; i < this.txs.length; i++) {
-            if (maxGas < (batch.cummulatedGas + this.gas[i])) {
-                break;
-            }
-            batch.txs = batch.txs.concat([this.txs[i]]);
-            batch.cummulatedGas += this.gas[i];
-        }
-        this.txs.splice(0, batch.txs.length);
-        return batch;
     }
 }

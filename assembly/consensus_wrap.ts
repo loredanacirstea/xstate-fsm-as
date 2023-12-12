@@ -15,12 +15,19 @@ import {
     ResponseCheckTx,
 } from './types_tendermint';
 
-export function InitChain(req: RequestInitChain): ResponseInitChain {
-    const reqbz = JSON.stringify<RequestInitChain>(req);
-    console.log("===InitChain==" + reqbz);
-    const respbz = consensus.InitChain(String.UTF8.encode(reqbz));
-    console.log("===InitChain=resp=" + String.UTF8.decode(respbz));
-    return JSON.parse<ResponseInitChain>(String.UTF8.decode(respbz));
+class MerkleSlices {
+	slices: string[] // base64 encoded
+    constructor(slices: string[]) {
+        this.slices = slices;
+    }
+}
+
+// base64 encoded
+export function MerkleHash(slices: string[]): string {
+    const data = new MerkleSlices(slices);
+    const databz = String.UTF8.encode(JSON.stringify<MerkleSlices>(data));
+    const resp = consensus.MerkleHash(databz);
+    return encodeBase64(Uint8Array.wrap(resp));
 }
 
 export function PrepareProposal(req: RequestPrepareProposal): ResponsePrepareProposal {

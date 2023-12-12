@@ -105,6 +105,11 @@ async function instantiate(module, imports = {}) {
         value = __liftBuffer(value >>> 0);
         return __lowerBuffer(__module1.ProcessProposal(value)) || __notnull();
       },
+      MerkleHash(value) {
+        // assembly/consensus/MerkleHash(~lib/arraybuffer/ArrayBuffer) => ~lib/arraybuffer/ArrayBuffer
+        value = __liftBuffer(value >>> 0);
+        return __lowerBuffer(__module1.MerkleHash(value)) || __notnull();
+      },
     }),
   };
   const { exports } = await WebAssembly.instantiate(module, adaptedImports);

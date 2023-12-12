@@ -9,8 +9,8 @@ import {
   EventObject,
   ActionParam,
 } from './types';
-import { hexToUint8Array, revert, parseInt32, parseInt64 } from "./utils";
-import { Block, LogEntry, Transaction, TransactionResponse, AppendEntry, AppendEntryResponse, Mempool } from "./types_raft";
+import { hexToUint8Array, revert, parseInt32, parseInt64, i32ToUint8ArrayBE, uint8ArrayToHex, i64ToUint8ArrayBE } from "./utils";
+import { LogEntry, TransactionResponse, AppendEntry, AppendEntryResponse } from "./types_raft";
 import * as typestnd from "./types_tendermint";
 
 // start at 0 TODO?
@@ -22,12 +22,35 @@ const LOG_START = 1;
 // commitBlocks -> startBlockFinalization -> finalize block -> commit -> save to logs + index transactions
 // commitBlocks ->
 
+
+// ABCISemVer is the semantic version of the ABCI protocol
+const ABCISemVer  = "2.0.0"
+const ABCIVersion = ABCISemVer
+// P2PProtocol versions all p2p behavior and msgs.
+// This includes proposer selection.
+const P2PProtocol: u64 = 8
+// BlockProtocol versions all block data structures and processing.
+// This includes validity of blocks and state updates.
+const BlockProtocol: u64 = 12;
+
+
+//// blockchain constants
+// MaxBlockSizeBytes is the maximum permitted size of the blocks.
+export const MaxBlockSizeBytes = 104857600 // 100MB
+
+// BlockPartSizeBytes is the size of one block part.
+export const BlockPartSizeBytes: u32 = 65536 // 64kB
+
+// MaxBlockPartsCount is the maximum number of block parts.
+export const MaxBlockPartsCount = (MaxBlockSizeBytes / BlockPartSizeBytes) + 1
+
 export function setupNode(
     params: ActionParam[],
     event: EventObject,
 ): void {
     let currentNodeId: string = "";
     let nodeIPs: string = "";
+    let initChainSetup: string = "";
     for (let i = 0; i < event.params.length; i++) {
         if (event.params[i].key === CURRENT_NODE_ID) {
             currentNodeId = event.params[i].value;
@@ -37,6 +60,10 @@ export function setupNode(
             nodeIPs = event.params[i].value;
             continue;
         }
+        if (event.params[i].key === "initChainSetup") {
+            initChainSetup = event.params[i].value;
+            continue;
+        }
     }
     if (currentNodeId === "") {
         revert("no currentNodeId found");
@@ -44,8 +71,14 @@ export function setupNode(
     if (nodeIPs === "") {
         revert("no nodeIPs found");
     }
+    if (initChainSetup === "") {
+        revert("no initChainSetup found");
+    }
     storage.setContextValue(CURRENT_NODE_ID, currentNodeId);
     storage.setContextValue(NODE_IPS, nodeIPs);
+
+    const data = JSON.parse<typestnd.InitChainSetup>(String.UTF8.decode(decodeBase64(initChainSetup).buffer));
+    initChain(data);
 
     const ips = JSON.parse<string[]>(nodeIPs);
     const nextIndex: Array<i64> = [];
@@ -56,6 +89,24 @@ export function setupNode(
     }
     setNextIndexArray(nextIndex);
     setMatchIndexArray(matchIndex);
+}
+
+function initChain(req: typestnd.InitChainSetup): void {
+    // TODO what are the correct empty valuew?
+    const emptyBlockId = new typestnd.BlockID("", new typestnd.PartSetHeader(0, ""))
+    const last_commit_hash = ""
+    const currentHashes = new typestnd.CurrentState(
+        req.chain_id,
+        req.version,
+        req.app_hash,
+        emptyBlockId,
+        last_commit_hash,
+        req.last_results_hash,
+        req.current_validator,
+    );
+    setConsensusParams(req.consensus_params);
+    setValidators(req.validators);
+    setCurrentState(currentHashes);
 }
 
 export function processAppendEntries(
@@ -180,7 +231,7 @@ export function sendAppendEntry(
     if (previousEntryStr != "") {
         previousEntry = JSON.parse<LogEntry>(previousEntryStr);
     } else {
-        previousEntry = new LogEntry(0, 0, 0, "", "");
+        previousEntry = new LogEntry(0, 0, 0, "", "", "", "");
     }
     const data = new AppendEntry(
         getTermId(),
@@ -281,10 +332,20 @@ export function proposeBlock(
     event: EventObject,
 ): void {
     const mempool = getMempool();
-    const maxgas = getMaxBlockGas();
-    const batch = mempool.batch(maxgas);
+    const cparams = getConsensusParams();
+    let maxbytes = cparams.block.max_bytes;
+    if (maxbytes == -1) {
+        maxbytes = MaxBlockSizeBytes;
+    }
+    let maxgas = cparams.block.max_gas;
+    const batch = mempool.batch(maxgas, maxbytes);
+
+    // TODO
+    // maxDataBytes := types.MaxDataBytes(maxBytes, evSize, state.Validators.Size())
+    const maxDataBytes = maxbytes;
+
     // start proposal protocol
-    startBlockProposal(batch.txs, batch.cummulatedGas);
+    startBlockProposal(batch.txs, batch.cummulatedGas, maxDataBytes);
     setMempool(mempool);
 }
 
@@ -320,7 +381,8 @@ export function appendLogInternal(
     // TODO actually decode tx
     // const parsedTx = decodeTx(transaction);
     const parsedTx =  new typestnd.Transaction(15000000);
-    const maxgas = getMaxBlockGas()
+    const cparams = getConsensusParams();
+    const maxgas = cparams.block.max_gas;
     if (maxgas < parsedTx.gas) {
         return revert(`out of gas: ${parsedTx.gas}; max ${maxgas}`);
     }
@@ -329,25 +391,64 @@ export function appendLogInternal(
     setMempool(mempool);
 }
 
-function startBlockProposal(txs: string[], cummulatedGas: i64): void {
+function startBlockProposal(txs: string[], cummulatedGas: i64, maxDataBytes: i64): void {
     // PrepareProposal TODO finish
     const height = getLogCount() + 1;
-    console.log("-startBlockProposal-" + height.toString())
+    console.log("* start block proposal: " + height.toString())
+    const currentState = getCurrentState();
+    const validators = getValidators();
+
     // TODO correct votes?
+    // lastExtCommit *types.ExtendedCommit
+    // lastExtCommit = cs.LastCommit.MakeExtendedCommit(cs.state.ConsensusParams.ABCI)
     const localLastCommit = new typestnd.ExtendedCommitInfo(0, new Array<typestnd.ExtendedVoteInfo>(0));
-    const maxTxBytes = getMaxTxBytes();
+    const nextValidatorsHash = getValidatorsHash(validators);
+    const proposerAddress = currentState.current_validator;
+    const misbehavior: typestnd.Misbehavior[] = []; // block.Evidence.Evidence.ToABCI()
+
     const time = new Date(Date.now())
 
-    const prepareReq = new typestnd.RequestPrepareProposal(maxTxBytes, txs, localLastCommit, [], height, time.toISOString(), "", "");
+    const prepareReq = new typestnd.RequestPrepareProposal(
+        maxDataBytes,
+        txs,
+        localLastCommit,
+        misbehavior,
+        height,
+        time.toISOString(),
+        nextValidatorsHash,
+        proposerAddress,
+    );
+
     const prepareResp = consensuswrap.PrepareProposal(prepareReq);
 
     // ProcessProposal: now check block is valid
     const lastCommit = new typestnd.CommitInfo(0, []); // TODO
+    const lastBlockCommit = new typestnd.BlockCommit(prepareReq.height -1, 0, currentState.last_block_id, []); // TODO
+    const evidence = new typestnd.Evidence(); // TODO
+    // TODO load app version from storage or Info()?
+
+    const header = new typestnd.Header(
+        new typestnd.VersionConsensus(BlockProtocol, currentState.version.consensus.app),
+        currentState.chain_id,
+        prepareReq.height,
+        prepareReq.time,
+        currentState.last_block_id,
+        getCommitHash(lastBlockCommit),
+        getTxsHash(prepareResp.txs),
+        nextValidatorsHash,
+        nextValidatorsHash,
+        getConsensusParamsHash(getConsensusParams()),
+        currentState.app_hash,
+        currentState.last_results_hash,
+        getEvidenceHash(evidence),
+        prepareReq.proposer_address,
+    );
+    const hash = getHeaderHash(header);
     const processReq = new typestnd.RequestProcessProposal(
         prepareResp.txs,
         lastCommit,
-        [],
-        "",
+        prepareReq.misbehavior,
+        hash,
         prepareReq.height,
         prepareReq.time,
         prepareReq.next_validators_hash,
@@ -360,11 +461,11 @@ function startBlockProposal(txs: string[], cummulatedGas: i64): void {
         return;
     }
     // We have a valid proposal to propagate to other nodes
-    return appendLogInternalVerified(processReq);
+    return appendLogInternalVerified(processReq, header, lastBlockCommit);
 }
 
 function startBlockFinalization(index: i64): void {
-    console.log("--startBlockFinalization--" + index.toString())
+    console.log("* start block finalization: " + index.toString())
     // get entry and apply it
     const entry = getLogEntry(index);
     console.log("--startBlockFinalization-entry-" + entry)
@@ -385,10 +486,30 @@ function startBlockFinalization(index: i64): void {
     const finalizeResp = consensuswrap.FinalizeBlock(finalizeReq);
     console.log("--startBlockFinalization-post FinalizeBlock-");
 
+    // TODO save less info? (events tx_results)
     const resultstr = JSON.stringify<typestnd.ResponseFinalizeBlock>(finalizeResp);
     const resultBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(resultstr)));
     entryobj.result = resultBase64;
     console.log("--startBlockFinalization-post FinalizeBlock stringified-" + entryobj.result);
+
+    const commitBz = String.UTF8.decode(decodeBase64(entryobj.commit).buffer);
+    console.log("--startBlockFinalization-commitBz-" + commitBz)
+    const commit = JSON.parse<typestnd.BlockCommit>(commitBz);
+
+    const last_commit_hash = getCommitHash(commit);
+    const last_results_hash = getResultsHash(finalizeResp.tx_results);
+
+    // update app_hash
+    const state = getCurrentState();
+    state.app_hash = finalizeResp.app_hash;
+    state.last_block_id = new typestnd.BlockID(finalizeReq.hash, new typestnd.PartSetHeader(0, finalizeReq.hash.slice(0, 8)));
+    state.last_commit_hash = last_commit_hash
+    state.last_results_hash = last_results_hash
+    setCurrentState(state);
+    // update consensus params
+    updateConsensusParams(finalizeResp.consensus_param_updates);
+    // update validator info
+    updateValidators(finalizeResp.validator_updates);
 
     // ! make all state changes before the commit
 
@@ -405,9 +526,11 @@ function startBlockFinalization(index: i64): void {
     const commitResponse = consensuswrap.Commit();
     // TODO commitResponse.retainHeight
     // Tendermint removes all data for heights lower than `retain_height`
+    console.log("--startBlockFinalization-commitResponse.retainHeight-" + commitResponse.retainHeight.toString());
+    console.log(`* BLOCK FINALIZED: ` + index.toString());
 }
 
-function appendLogInternalVerified(processReq: typestnd.RequestProcessProposal): void {
+function appendLogInternalVerified(processReq: typestnd.RequestProcessProposal, header: typestnd.Header, blockCommit: typestnd.BlockCommit): void {
     console.log("==appendLogInternalVerified==")
     // const hash = "";
     // const parentHash = "";
@@ -419,9 +542,13 @@ function appendLogInternalVerified(processReq: typestnd.RequestProcessProposal):
 
     const blockData = JSON.stringify<typestnd.RequestProcessProposal>(processReq);
     const blockDataBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(blockData)))
+    const blockHeader = JSON.stringify<typestnd.Header>(header);
+    const blockHeaderBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(blockHeader)))
+    const commit = JSON.stringify<typestnd.BlockCommit>(blockCommit);
+    const commitBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(commit)))
     const termId = getTermId();
     const leaderId = getCurrentNodeId();
-    const entry = new LogEntry(processReq.height, termId, leaderId, blockDataBase64, "");
+    const entry = new LogEntry(processReq.height, termId, leaderId, blockDataBase64, blockHeaderBase64, commitBase64, "");
     appendLogEntry(entry);
 }
 
@@ -506,8 +633,6 @@ const NEXT_INDEX_ARRAY = "nextIndex";
 //// Cosmos-specific
 const MEMPOOL_KEY = "mempool";
 
-const MAX_BLOCK_GAS = "max_block_gas";
-
 const MAX_TX_BYTES = "max_tx_bytes";
 
 // index of log entry immediately preceding new ones
@@ -515,6 +640,10 @@ const MAX_TX_BYTES = "max_tx_bytes";
 
 //// blockchain
 const TX_INDEXER = "tx_";
+
+const PARAMS_KEY = "consensus_params";
+const VALIDATORS_KEY = "validators";
+const STATE_KEY = "state";
 
 function getTermId(): i32 {
     const value = storage.getContextValue(TERM_ID);
@@ -584,20 +713,14 @@ function setNextIndexArray(arr: Array<i64>): void {
     storage.setContextValue(NEXT_INDEX_ARRAY, JSON.stringify<Array<i64>>(arr));
 }
 
-export function getMempool(): Mempool {
+export function getMempool(): typestnd.Mempool {
     const mempool = storage.getContextValue(MEMPOOL_KEY);
-    if (mempool === "") return  new Mempool(new Array<string>(0), new Array<i32>(0));
-    return JSON.parse<Mempool>(mempool);
+    if (mempool === "") return  new typestnd.Mempool(new Array<string>(0), new Array<i32>(0));
+    return JSON.parse<typestnd.Mempool>(mempool);
 }
 
-export function setMempool(mempool: Mempool): void {
-    storage.setContextValue(MEMPOOL_KEY, JSON.stringify<Mempool>(mempool));
-}
-
-export function getMaxBlockGas(): i64 {
-    const value = storage.getContextValue(MAX_BLOCK_GAS);
-    if (value === "") return i64(0);
-    return parseInt64(value);
+export function setMempool(mempool: typestnd.Mempool): void {
+    storage.setContextValue(MEMPOOL_KEY, JSON.stringify<typestnd.Mempool>(mempool));
 }
 
 export function getMaxTxBytes(): i64 {
@@ -621,4 +744,161 @@ function setIndexedTransaction(tx: typestnd.IndexedTransaction, hash: string): v
 
 function keyIndexedTransaction(hash: string): string {
     return TX_INDEXER + hash;
+}
+
+export function getConsensusParams(): typestnd.ConsensusParams {
+    const value = storage.getContextValue(PARAMS_KEY);
+    if (value === "") return new typestnd.ConsensusParams(
+        new typestnd.BlockParams(0, 0),
+        new typestnd.EvidenceParams(0, 0, 0),
+        new typestnd.ValidatorParams([]),
+        new typestnd.VersionParams(0),
+        new typestnd.ABCIParams(0),
+    );
+    return JSON.parse<typestnd.ConsensusParams>(value);
+}
+
+export function setConsensusParams(value: typestnd.ConsensusParams): void {
+    storage.setContextValue(PARAMS_KEY, JSON.stringify<typestnd.ConsensusParams>(value));
+}
+
+export function getValidators(): typestnd.ValidatorInfo[] {
+    const value = storage.getContextValue(VALIDATORS_KEY);
+    if (value === "") return [];
+    return JSON.parse<typestnd.ValidatorInfo[]>(value);
+}
+
+export function setValidators(value: typestnd.ValidatorInfo[]): void {
+    storage.setContextValue(VALIDATORS_KEY, JSON.stringify<typestnd.ValidatorInfo[]>(value));
+}
+
+export function updateValidators(updates: typestnd.ValidatorUpdate[]): void {
+    const validators = getValidators();
+    for (let i = 0; i < updates.length; i++) {
+        for (let j = 0; j < validators.length; j++) {
+            if (validators[j].pub_key == updates[i].pub_key) {
+                validators[j].voting_power = updates[i].power;
+            }
+        }
+    }
+    setValidators(validators);
+}
+
+export function updateConsensusParams(updates: typestnd.ConsensusParams): void {
+    const params = getConsensusParams();
+    if (updates.abci) {
+        if (updates.abci.vote_extensions_enable_height) {
+            params.abci.vote_extensions_enable_height = updates.abci.vote_extensions_enable_height;
+        }
+    }
+    if (updates.block) {
+        if (updates.block.max_bytes) params.block.max_bytes = updates.block.max_bytes;
+        if (updates.block.max_gas) params.block.max_gas = updates.block.max_gas;
+    }
+    if (updates.evidence) {
+        if (updates.evidence.max_age_duration) params.evidence.max_age_duration = updates.evidence.max_age_duration;
+        if (updates.evidence.max_age_num_blocks) params.evidence.max_age_num_blocks = updates.evidence.max_age_num_blocks;
+        if (updates.evidence.max_bytes) params.evidence.max_bytes = updates.evidence.max_bytes;
+    }
+    if (updates.validator) {
+        if (updates.validator.pub_key_types) params.validator.pub_key_types = updates.validator.pub_key_types;
+    }
+    if (updates.version) {
+        if (updates.version.app) params.version.app = updates.version.app;
+    }
+    setConsensusParams(params);
+}
+
+export function getCurrentState(): typestnd.CurrentState {
+    const value = storage.getContextValue(STATE_KEY);
+    // this must be set before we try to read it
+    if (value === "") {
+        revert("chain init setup was not ran")
+    }
+    return JSON.parse<typestnd.CurrentState>(value);
+}
+
+export function setCurrentState(value: typestnd.CurrentState): void {
+    storage.setContextValue(STATE_KEY, JSON.stringify<typestnd.CurrentState>(value));
+}
+
+// ValidatorSet.Validators hash (ValidatorInfo[] hash)
+// TODO cometbft protobuf encodes cmtproto.SimpleValidator
+function getValidatorsHash(validators: typestnd.ValidatorInfo[]): string {
+    let data = new Array<string>(validators.length);
+    for (let i = 0; i < validators.length; i++) {
+        console.log("--getValidatorsHash-pub_key-" + i.toString() + "-" + validators[i].pub_key)
+        // hex
+        const pub_key = hexToUint8Array(validators[i].pub_key);
+        const power = i64ToUint8ArrayBE(validators[i].voting_power);
+        const newdata = new Uint8Array(pub_key.length + power.length);
+        newdata.set(pub_key, 0);
+        newdata.set(power, pub_key.length);
+        data[i] = uint8ArrayToHex(newdata);
+    }
+    return consensuswrap.MerkleHash(data);
+}
+
+// Txs.Hash() -> [][]byte merkle.HashFromByteSlices
+// base64
+export function getTxsHash(txs: string[]): string {
+    return consensuswrap.MerkleHash(txs);
+}
+
+// Hash returns a hash of a subset of the parameters to store in the block header.
+// Only the Block.MaxBytes and Block.MaxGas are included in the hash.
+// This allows the ConsensusParams to evolve more without breaking the block
+// protocol. No need for a Merkle tree here, just a small struct to hash.
+// cometbft: cmtproto.HashedParams
+export function getConsensusParamsHash(params: typestnd.ConsensusParams): string {
+    const value = JSON.stringify<typestnd.BlockParams>(params.block);
+    const hash = wasmx.sha256(String.UTF8.encode(value));
+    return encodeBase64(Uint8Array.wrap(hash));
+}
+
+// []Evidence hash
+// TODO
+export function getEvidenceHash(params: typestnd.Evidence): string {
+    return consensuswrap.MerkleHash([]);
+}
+
+export function getCommitHash(lastCommit: typestnd.BlockCommit): string {
+    // TODO MerkleHash(lastCommit.signatures)
+    return consensuswrap.MerkleHash([]);
+}
+
+export function getResultsHash(results: typestnd.ExecTxResult[]): string {
+    const data = new Array<string>(results.length);
+    for (let i = 0; i < results.length; i++) {
+        data[i] = encodeBase64(Uint8Array.wrap(String.UTF8.encode(JSON.stringify<typestnd.ExecTxResult>(results[i]))));
+    }
+    return consensuswrap.MerkleHash(data);
+}
+
+// Hash returns the hash of the header.
+// It computes a Merkle tree from the header fields
+// ordered as they appear in the Header.
+// Returns nil if ValidatorHash is missing,
+// since a Header is not valid unless there is
+// a ValidatorsHash (corresponding to the validator set).
+function getHeaderHash(header: typestnd.Header): string {
+    const versionbz = String.UTF8.encode(JSON.stringify<typestnd.VersionConsensus>(header.version));
+    const blockidbz = String.UTF8.encode(JSON.stringify<typestnd.BlockID>(header.last_block_id));
+    const data = [
+        encodeBase64(Uint8Array.wrap(versionbz)),
+        encodeBase64(Uint8Array.wrap(String.UTF8.encode(header.chain_id))),
+        encodeBase64(i64ToUint8ArrayBE(header.height)),
+        encodeBase64(Uint8Array.wrap(String.UTF8.encode(header.time))),
+        encodeBase64(Uint8Array.wrap(blockidbz)),
+        header.last_commit_hash,
+        header.data_hash,
+        header.validators_hash,
+        header.next_validators_hash,
+        header.consensus_hash,
+        header.app_hash,
+        header.last_results_hash,
+        header.evidence_hash,
+        header.proposer_address, // TODO transform hex to base64
+    ]
+    return consensuswrap.MerkleHash(data);
 }

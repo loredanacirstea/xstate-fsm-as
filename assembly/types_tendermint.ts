@@ -2,6 +2,109 @@ import { JSON } from "json-as/assembly";
 
 // @ts-ignore
 @serializable
+export class VersionConsensus {
+    block: u64
+    app: u64
+    constructor(block: u64, app: u64) {
+        this.block = block
+        this.app = app
+    }
+}
+
+// @ts-ignore
+@serializable
+export class Version {
+	consensus: VersionConsensus
+	software: string
+    constructor(consensus: VersionConsensus, software: string) {
+        this.consensus = consensus
+        this.software = software
+    }
+}
+
+// @ts-ignore
+@serializable
+export class PartSetHeader {
+    total: u32
+    hash: string // base64
+    constructor(total: u32, hash: string) {
+        this.total = total;
+        this.hash = hash;
+    }
+}
+
+// @ts-ignore
+@serializable
+export class BlockID {
+    // block hash
+    hash: string // base64
+    // PartSet containing parts of a serialized block. is the form in which the block is gossipped to peers.
+    // PartSetHeader:
+    // 1. total number of parts
+    // 2. first 6 bytes of the hash
+    parts: PartSetHeader
+    constructor(hash: string, parts: PartSetHeader) {
+        this.hash = hash;
+        this.parts = parts;
+    }
+}
+
+// @ts-ignore
+@serializable
+export class Header {
+    // basic block info
+    version: VersionConsensus
+    chain_id: string
+    height: i64
+    time: string
+
+    // prev block info
+    last_block_id: BlockID
+
+    // hashes of block data
+    // commit from validators from the last block
+    last_commit_hash: string // base64
+    // transactions
+    data_hash: string // base64       // transactions
+
+    // hashes from the app output from the prev block
+    // validators for the current block
+    validators_hash: string // base64
+    // validators for the next block
+    next_validators_hash: string // base64
+    // consensus params for current block
+    consensus_hash: string // base64
+    // state after txs from the previous block
+    app_hash: string // base64
+    // root hash of all results from the txs from the previous block
+    // see `deterministicExecTxResult` to understand which parts of a tx is hashed into here
+    last_results_hash: string // base64
+
+    // consensus info
+    // evidence included in the block
+    evidence_hash: string // base64
+    // original proposer of the block
+    proposer_address: string // hex
+    constructor(version: VersionConsensus, chain_id: string, height: i64, time: string, last_block_id: BlockID, last_commit_hash: string, data_hash: string, validators_hash: string, next_validators_hash: string, consensus_hash: string, app_hash: string, last_results_hash: string, evidence_hash: string, proposer_address: string) {
+        this.version = version;
+        this.chain_id = chain_id;
+        this.height = height;
+        this.time = time;
+        this.last_block_id = last_block_id;
+        this.last_commit_hash = last_commit_hash;
+        this.data_hash = data_hash;
+        this.validators_hash = validators_hash;
+        this.next_validators_hash = next_validators_hash;
+        this.consensus_hash = consensus_hash;
+        this.app_hash = app_hash;
+        this.last_results_hash = last_results_hash;
+        this.evidence_hash = evidence_hash;
+        this.proposer_address = proposer_address;
+    }
+}
+
+// @ts-ignore
+@serializable
 export class ExtendedVoteInfo {
 	// The validator that sent the vote.
 	validator: Validator;
@@ -35,8 +138,48 @@ export class ExtendedCommitInfo {
 
 // @ts-ignore
 @serializable
+export class CommitSig {
+    block_id_flag: BlockIDFlag
+    validator_address: string // hex
+    timestamp: string
+    signature: string // base64
+    constructor(block_id_flag: BlockIDFlag, validator_address: string, timestamp: string, signature: string) {
+        this.block_id_flag = block_id_flag;
+        this.validator_address = validator_address;
+        this.timestamp = timestamp;
+        this.signature = signature;
+    }
+}
+
+// @ts-ignore
+@serializable
+export class BlockCommit {
+    // NOTE: The signatures are in order of address to preserve the bonded
+    // ValidatorSet order.
+    // Any peer with a block can gossip signatures by index with a peer without
+    // recalculating the active ValidatorSet.
+    height: i64
+    round: i32
+    block_id: BlockID
+    signatures: CommitSig[]
+    constructor(height: i64, round: i32, block_id: BlockID, signatures: CommitSig[]) {
+        this.height = height;
+        this.round = round;
+        this.block_id = block_id;
+        this.signatures = signatures;
+    }
+}
+
+// @ts-ignore
+@serializable
 export class Misbehavior {
     // TODO
+}
+
+// @ts-ignore
+@serializable
+export class Evidence {
+     // TODO
 }
 
 // @ts-ignore
@@ -120,10 +263,13 @@ export class RequestProcessProposal {
     txs: Array<string> // base64 encoded
 	proposed_last_commit: CommitInfo
 	misbehavior: Misbehavior[]
+    // hash is the merkle root hash of the fields of the proposed block
+    // block.Header.Hash()
 	hash: string // base64
 	height: i64
 	time: string
 	next_validators_hash: string // base64
+    // address of the public key of the original proposer of the block.
 	proposer_address: string // base64
     constructor(txs: Array<string>, proposedLastCommit: CommitInfo, misbehavior: Misbehavior[], hash: string, height: i64, time: string, nextValidatorsHash: string, proposerAddress: string) {
         this.txs = txs;
@@ -227,6 +373,27 @@ export class ExecTxResult { // same as ResponseCheckTx
 // @ts-ignore
 @serializable
 export class ValidatorUpdate {
+    pub_key: string // crypto.PublicKey
+	power: i64
+    constructor(pub_key: string, power: i64) {
+        this.pub_key = pub_key;
+        this.power = power;
+    }
+}
+
+// @ts-ignore
+@serializable
+export class ValidatorInfo {
+    address: string // hex encoded
+    pub_key: string // crypto.PubKey
+    voting_power: i64
+    proposer_priority: i64
+    constructor(address: string, pub_key: string, voting_power: i64, proposer_priority: i64) {
+        this.address = address;
+        this.pub_key = pub_key;
+        this.voting_power = voting_power;
+        this.proposer_priority = proposer_priority;
+    }
 }
 
 // @ts-ignore
@@ -442,4 +609,100 @@ export class ResponseInitChain {
         this.validators = validators
         this.app_hash = app_hash
     }
+}
+
+// @ts-ignore
+@serializable
+export class InitChainSetup {
+    chain_id: string
+    version: Version
+	consensus_params: ConsensusParams
+	validators: ValidatorInfo[]
+	app_hash: string
+    last_results_hash: string // base64
+    current_validator: string // hex
+    constructor(chain_id: string, version: Version, consensus_params: ConsensusParams, validators: ValidatorInfo[], app_hash: string, last_results_hash: string, current_validator: string) {
+        this.chain_id = chain_id
+        this.version = version
+        this.consensus_params = consensus_params
+        this.validators = validators
+        this.app_hash = app_hash
+        this.last_results_hash = last_results_hash
+        this.current_validator = current_validator
+    }
+}
+
+// @ts-ignore
+@serializable
+export class CurrentState {
+    chain_id: string
+    version: Version
+	app_hash: string // updated after Finalized Block
+    // prev block info
+    last_block_id: BlockID // updated after Finalized Block
+    // commit from validators from the last block
+    last_commit_hash: string // base64
+    // tx results hash
+    last_results_hash: string // base64
+    current_validator: string // hex
+    constructor(chain_id: string, version: Version, app_hash: string, last_block_id: BlockID, last_commit_hash: string, last_results_hash: string, current_validator: string) {
+        this.chain_id = chain_id
+        this.version = version
+        this.app_hash = app_hash
+        this.last_block_id = last_block_id
+        this.last_commit_hash = last_commit_hash
+        this.last_results_hash = last_results_hash
+        this.current_validator = current_validator
+    }
+}
+
+// @ts-ignore
+@serializable
+class MempoolBatch {
+    txs: string[];
+    cummulatedGas: i64;
+    constructor(txs: string[] = [], cummulatedGas: i64 = 0) {
+        this.txs = txs;
+        this.cummulatedGas = cummulatedGas;
+    }
+}
+
+// @ts-ignore
+@serializable
+export class Mempool {
+    txs: string[];
+    gas: i32[];
+    constructor(txs: string[] = [], gas: i32[] = []) {
+        this.txs = txs;
+        this.gas = gas;
+    }
+
+    add(tx: string, gas: i32): void {
+        this.gas = this.gas.concat([gas]);
+        this.txs = this.txs.concat([tx]);
+    }
+
+    batch(maxGas: i64, maxBytes: i64): MempoolBatch {
+        let batch: MempoolBatch = new MempoolBatch([], 0);
+        let cummulatedBytes: i64 = 0;
+        for (let i = 0; i < this.txs.length; i++) {
+            if (maxGas < (batch.cummulatedGas + this.gas[i])) {
+                break;
+            }
+            const bytelen = base64Len(this.txs[i]);
+            if (maxBytes < (cummulatedBytes + bytelen)) {
+                break;
+            }
+            batch.txs = batch.txs.concat([this.txs[i]]);
+            batch.cummulatedGas += this.gas[i];
+            cummulatedBytes += bytelen;
+        }
+        this.txs.splice(0, batch.txs.length);
+        return batch;
+    }
+}
+
+// 4 chars represent 3 bytes
+function base64Len(value: string): i32 {
+    return i32(Math.ceil(value.length / 4)) * 3;
 }
