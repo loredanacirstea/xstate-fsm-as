@@ -122,10 +122,13 @@ export function log_fsm(
 
 export function grpcRequest(ip: string, contract: Uint8Array, data: string): string {
     const contractAddress = encodeBase64(contract);
-    const req = String.UTF8.encode(`{"ip_address":"${ip}","contract":"${contractAddress}","data":"${data}"}`);
+    const reqstr = `{"ip_address":"${ip}","contract":"${contractAddress}","data":"${data}"}`
+    console.debug("grpc request: " + reqstr);
+    const req = String.UTF8.encode(reqstr);
     const result = wasmx.grpcRequest(req);
-    console.log(String.UTF8.decode(result));
-    return String.UTF8.decode(result);
+    const response = String.UTF8.decode(result);
+    console.debug("grpc response: " + response);
+    return response;
 }
 
 export function call(req: CallRequest): CallResponse {

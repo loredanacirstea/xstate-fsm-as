@@ -1,4 +1,5 @@
 import * as wasmx from './wasmx';
+import * as consensuswrap from './consensus_wrap';
 
 export function arrayBufferToU8Array(buffer: ArrayBuffer): u8[] {
     const length = buffer.byteLength;
@@ -58,6 +59,8 @@ export function i64ToUint8ArrayBE(value: i64): Uint8Array {
 }
 
 export function revert(message: string): void {
+    // console.debug(`Error: ${message}`);
+    consensuswrap.LoggerError("revert", ["message", message])
     wasmx.revert(String.UTF8.encode(message));
     throw new Error(message);
 }

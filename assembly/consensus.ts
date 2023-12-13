@@ -3,4 +3,9 @@ export declare function ProcessProposal(value: ArrayBuffer): ArrayBuffer
 export declare function FinalizeBlock(value: ArrayBuffer): ArrayBuffer
 export declare function Commit(): ArrayBuffer
 export declare function CheckTx(value: ArrayBuffer): ArrayBuffer
+
 export declare function MerkleHash(value: ArrayBuffer): ArrayBuffer
+
+export declare function LoggerInfo(value: ArrayBuffer): void
+export declare function LoggerError(value: ArrayBuffer): void
+export declare function LoggerDebug(value: ArrayBuffer): void

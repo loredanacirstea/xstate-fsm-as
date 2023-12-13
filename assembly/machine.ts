@@ -76,7 +76,7 @@ function handleActions(
 
   for (let i = 0; i < actions.length; i++) {
     const action = actions[i];
-    console.log("* execute action: " + action.type);
+    console.debug("* execute action: " + action.type);
     if (action.type === ASSIGN_ACTION) {
       assigned = true;
 
@@ -131,12 +131,12 @@ function executeStateActions(
     state: State,
     event: EventObject
 ): void {
-  console.log("* executeStateActions: " + state.actions.length.toString())
+  console.debug("* executeStateActions: " + state.actions.length.toString())
   for (let i = 0; i < state.actions.length; i++) {
     const action = state.actions[i];
     executeStateAction(service, state, event, action);
   }
-  console.log("* executeStateActions after actions " + state.value)
+  console.debug("* executeStateActions after actions " + state.value)
 
   // timed actions from the new target state
   const newstateconfig = findStateInfo(service.machine.states, state.value);
@@ -149,8 +149,8 @@ function executeStateActions(
     return;
   }
   const delayKeys = afterTimers.keys();
-  console.log("* setting timed actions for " + state.value);
-  console.log("* setting timed actions... " + delayKeys.join(","));
+  console.debug("* setting timed actions for " + state.value);
+  console.debug("* setting timed actions... " + delayKeys.join(","));
 
   for (let i = 0; i < delayKeys.length; i++) {
     // delay is in milliseconds
@@ -166,11 +166,10 @@ function executeStateActions(
     } else {
       delay = u64(delayKey);
     }
-    console.log("===delay===" + delay.toString())
     const args = new TimerArgs(delayKeys[i], state.value);
     const argsStr = JSON.stringify<TimerArgs>(args);
     const intervalId = wasmx.startInterval(i32(1), delay, String.UTF8.encode(argsStr));
-    console.log("===intervalId==" + intervalId.toString());
+    console.debug("* intervalId: " + intervalId.toString());
   }
 }
 
@@ -181,11 +180,11 @@ function executeStateAction(
     action:  ActionObject,
 ): void {
     const actionType = action.type;
-    console.log("* execute action: " + actionType);
+    console.debug("* execute action: " + actionType);
 
     if (actionType === RaiseActionType) {
         const ev = action.event;
-        console.log("* raise: " + ev!.type);
+        console.debug("* raise: " + ev!.type);
         if (ev === null) {
             return revert("raise action is missing event");
         }
@@ -353,14 +352,14 @@ export class Service implements StateMachine.Service {
   }
 
   send(event: EventObject): void {
-    console.log("* send event: " + event.type);
-    console.log("* status: " + this.status.toString());
+    console.debug("* send event: " + event.type);
+    console.debug("* status: " + this.status.toString());
     if (this.status !== InterpreterStatus.Running) {
       return;
     }
     let state = storage.getCurrentState();
     state = this.machine.transition(state, event);
-    console.log("* posttransition state: " + state.value);
+    console.debug("* posttransition state: " + state.value);
     // Set new state before executing actions
     storage.setCurrentState(state);
     executeStateActions(this, state, event);
@@ -454,7 +453,7 @@ export class Machine implements StateMachine.Machine {
     if (stateConfig.on) {
       if (stateConfig.on.has(eventObject.type)) {
         transition = stateConfig.on.get(eventObject.type);
-        console.log("* transition next target: " + transition.target)
+        console.debug("* transition next target: " + transition.target)
       } else {
         // search for transition in the parents
         transition = findTransitionInParents(this.states, value, eventObject);
@@ -480,7 +479,7 @@ export class Machine implements StateMachine.Machine {
     transition: Transition,
     eventObject: EventObject,
   ): State {
-    console.log("* applyTransition: " + transition.target);
+    console.debug("* applyTransition: " + transition.target);
     const value = state.value;
     const stateConfig = findStateInfo(this.states, value);
     if (!stateConfig) {
@@ -587,7 +586,7 @@ export class Machine implements StateMachine.Machine {
         }
         // console.log("--findStateInfo--END2=");
 
-        console.log("* transition next target: " + resolvedTarget);
+        console.debug("* transition next target: " + resolvedTarget);
 
         return new State(resolvedTarget, nonAssignActions, target !== value || nonAssignActions.length > 0 || assigned);
         // matches: createMatcher(resolvedTarget)
@@ -773,15 +772,15 @@ export function equalState(state1: string, state2: string): boolean {
 }
 
 export function eventual(config: MachineExternal, intervalId: i32, args: TimerArgs): void {
-  console.log("* eventual: " + args.state + "--" + args.delay);
+  console.debug("* eventual: " + args.state + "--" + args.delay);
   const service = loadServiceFromConfig(config);
   const currentState = storage.getCurrentState();
-  console.log("* eventual - finding state: " + currentState.value);
+  console.debug("* eventual - finding state: " + currentState.value);
   const isEqual = equalState(currentState.value, args.state);
 
   if (!isEqual) {
     // we are in the wrong state, so the interval must be stopped
-    console.log("* eventual: we are in the wrong state");
+    console.debug("* eventual: we are in the wrong state");
     // wasmx.stopInterval(intervalId);
     return;
   }
@@ -790,14 +789,14 @@ export function eventual(config: MachineExternal, intervalId: i32, args: TimerAr
   if (!newstateconfig) {
     return revert("could not find state config for " + currentState.value);
   }
-  console.log("* eventual - finding after");
+  console.debug("* eventual - finding after");
   const afterTimers = newstateconfig.after;
   if (afterTimers == null || !afterTimers.has(args.delay)) {
     // we are in the wrong state, so the interval must be stopped
     // wasmx.stopInterval(intervalId);
     return;
   }
-  console.log("* execute delayed action... " + args.delay)
+  console.debug("* execute delayed action... " + args.delay)
   // delay is in milliseconds
   const transition = afterTimers.get(args.delay);
   if (!transition) {

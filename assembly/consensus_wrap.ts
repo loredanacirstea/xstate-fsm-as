@@ -24,6 +24,17 @@ class MerkleSlices {
     }
 }
 
+// @ts-ignore
+@serializable
+class LoggerLog {
+	msg: string
+	parts: string[]
+    constructor(msg: string, parts: string[]) {
+        this.msg = msg;
+        this.parts = parts;
+    }
+}
+
 // base64 encoded
 export function MerkleHash(slices: string[]): string {
     const data = new MerkleSlices(slices);
@@ -32,41 +43,67 @@ export function MerkleHash(slices: string[]): string {
     return encodeBase64(Uint8Array.wrap(resp));
 }
 
+export function LoggerInfo(msg: string, parts: string[]): void {
+    msg = `raft: ${msg}`
+    const data = new LoggerLog(msg, parts);
+    const databz = String.UTF8.encode(JSON.stringify<LoggerLog>(data));
+    consensus.LoggerInfo(databz);
+}
+
+export function LoggerError(msg: string, parts: string[]): void {
+    msg = `raft: ${msg}`
+    const data = new LoggerLog(msg, parts);
+    const databz = String.UTF8.encode(JSON.stringify<LoggerLog>(data));
+    consensus.LoggerError(databz);
+}
+
+export function LoggerDebug(msg: string, parts: string[]): void {
+    msg = `raft: ${msg}`
+    const data = new LoggerLog(msg, parts);
+    const databz = String.UTF8.encode(JSON.stringify<LoggerLog>(data));
+    consensus.LoggerDebug(databz);
+}
+
 export function PrepareProposal(req: RequestPrepareProposal): ResponsePrepareProposal {
-    const reqbz = JSON.stringify<RequestPrepareProposal>(req);
-    console.log("===PrepareProposal==" + reqbz);
-    const respbz = consensus.PrepareProposal(String.UTF8.encode(reqbz));
-    console.log("===PrepareProposal=resp=" + String.UTF8.decode(respbz));
-    return JSON.parse<ResponsePrepareProposal>(String.UTF8.decode(respbz));
+    const reqstr = JSON.stringify<RequestPrepareProposal>(req);
+    LoggerDebug("PrepareProposal", ["request", reqstr]);
+    const respbz = consensus.PrepareProposal(String.UTF8.encode(reqstr));
+    const respstr = String.UTF8.decode(respbz);
+    LoggerDebug("PrepareProposal", ["response", respstr]);
+    return JSON.parse<ResponsePrepareProposal>(respstr);
 }
 
 export function ProcessProposal(req: RequestProcessProposal): ResponseProcessProposal {
-    const reqbz = JSON.stringify<RequestProcessProposal>(req);
-    console.log("===ProcessProposal==" + reqbz);
-    const respbz = consensus.ProcessProposal(String.UTF8.encode(reqbz));
-    console.log("===ProcessProposal=resp=" + String.UTF8.decode(respbz));
-    return JSON.parse<ResponseProcessProposal>(String.UTF8.decode(respbz));
+    const reqstr = JSON.stringify<RequestProcessProposal>(req);
+    LoggerDebug("ProcessProposal", ["request", reqstr]);
+    const respbz = consensus.ProcessProposal(String.UTF8.encode(reqstr));
+    const respstr = String.UTF8.decode(respbz);
+    LoggerDebug("ProcessProposal", ["response", respstr]);
+    return JSON.parse<ResponseProcessProposal>(respstr);
 }
 
 export function FinalizeBlock(req: RequestFinalizeBlock): ResponseFinalizeBlock {
-    const reqbz = JSON.stringify<RequestFinalizeBlock>(req);
-    console.log("===FinalizeBlock==" + reqbz);
-    const respbz = consensus.FinalizeBlock(String.UTF8.encode(reqbz));
-    console.log("===FinalizeBlock=resp=" + String.UTF8.decode(respbz));
-    return JSON.parse<ResponseFinalizeBlock>(String.UTF8.decode(respbz));
+    const reqstr = JSON.stringify<RequestFinalizeBlock>(req);
+    LoggerDebug("FinalizeBlock", ["request", reqstr]);
+    const respbz = consensus.FinalizeBlock(String.UTF8.encode(reqstr));
+    const respstr = String.UTF8.decode(respbz);
+    LoggerDebug("FinalizeBlock", ["response", respstr]);
+    return JSON.parse<ResponseFinalizeBlock>(respstr);
 }
 
 export function Commit(): ResponseCommit {
-    console.log("===Commit==");
+    LoggerDebug("Commit", []);
     const respbz = consensus.Commit();
-    console.log("===Commit=resp=" + String.UTF8.decode(respbz));
-    return JSON.parse<ResponseCommit>(String.UTF8.decode(respbz));
+    const respstr = String.UTF8.decode(respbz);
+    LoggerDebug("Commit", ["response", respstr]);
+    return JSON.parse<ResponseCommit>(respstr);
 }
 
 export function CheckTx(req: RequestCheckTx): ResponseCheckTx {
-    const reqbz = JSON.stringify<RequestCheckTx>(req);
-    console.log("===CheckTx==" + reqbz);
-    const respbz = consensus.CheckTx(String.UTF8.encode(reqbz));
-    console.log("===CheckTx=resp=" + String.UTF8.decode(respbz));
-    return JSON.parse<ResponseCheckTx>(String.UTF8.decode(respbz));
+    const reqstr = JSON.stringify<RequestCheckTx>(req);
+    LoggerDebug("CheckTx", ["request", reqstr]);
+    const respbz = consensus.CheckTx(String.UTF8.encode(reqstr));
+    const respstr = String.UTF8.decode(respbz);
+    LoggerDebug("CheckTx", ["response", respstr]);
+    return JSON.parse<ResponseCheckTx>(respstr);
 }

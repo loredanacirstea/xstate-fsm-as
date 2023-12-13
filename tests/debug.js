@@ -24,6 +24,11 @@ async function instantiate(module, imports = {}) {
         text = __liftString(text >>> 0);
         console.error(text);
       },
+      "console.debug"(text) {
+        // ~lib/bindings/dom/console.debug(~lib/string/String) => void
+        text = __liftString(text >>> 0);
+        console.debug(text);
+      },
       "Date.now"() {
         // ~lib/bindings/dom/Date.now() => f64
         return Date.now();
@@ -90,6 +95,21 @@ async function instantiate(module, imports = {}) {
       },
     }),
     consensus: Object.assign(Object.create(__module1), {
+      LoggerError(value) {
+        // assembly/consensus/LoggerError(~lib/arraybuffer/ArrayBuffer) => void
+        value = __liftBuffer(value >>> 0);
+        __module1.LoggerError(value);
+      },
+      LoggerDebug(value) {
+        // assembly/consensus/LoggerDebug(~lib/arraybuffer/ArrayBuffer) => void
+        value = __liftBuffer(value >>> 0);
+        __module1.LoggerDebug(value);
+      },
+      LoggerInfo(value) {
+        // assembly/consensus/LoggerInfo(~lib/arraybuffer/ArrayBuffer) => void
+        value = __liftBuffer(value >>> 0);
+        __module1.LoggerInfo(value);
+      },
       CheckTx(value) {
         // assembly/consensus/CheckTx(~lib/arraybuffer/ArrayBuffer) => ~lib/arraybuffer/ArrayBuffer
         value = __liftBuffer(value >>> 0);

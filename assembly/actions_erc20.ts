@@ -144,9 +144,6 @@ export function move(
     params: ActionParam[],
     event: EventObject,
 ): void {
-    // console.log("--move--" + event.type + "--" + event.params.length.toString());
-    // console.log("--move--" + params.length.toString());
-
     let from: string = "";
     let to: string = "";
     let amount: i64 = 0;
@@ -173,7 +170,6 @@ export function move(
     if (amount === 0) {
         return;
     }
-    // console.log("--move--" + from + "-" + to + "-" + amount.toString());
     let balanceFrom = getBalance(from);
     let balanceTo = getBalance(to);
     balanceFrom -= i64(amount);
@@ -186,9 +182,6 @@ export function approve(
     params: ActionParam[],
     event: EventObject,
 ): void {
-    // console.log("--approve--" + event.type + "--" + event.params.length.toString());
-    // console.log("--approve--" + params.length.toString());
-
     let spender: string = "";
     let amount: i64 = 0;
     for (let i = 0; i < event.params.length; i++) {
@@ -204,7 +197,6 @@ export function approve(
     if (spender === "") {
         revert("approve event empty address");
     }
-    // console.log("--approve--" + spender + "-" + amount.toString());
     if (amount === 0) {
         return;
     }

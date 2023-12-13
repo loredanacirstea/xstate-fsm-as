@@ -174,6 +174,21 @@ export function consensus(storageMap, env, logType = LOG.error) {
         return new Uint8Array(0);
     }
 
+    function LoggerDebug(buf) {
+        const req = JSON.parse(decodeFromUtf8Array(buf));
+        console.debug(req.msg, ...req.parts);
+    }
+
+    function LoggerInfo(buf) {
+        const req = JSON.parse(decodeFromUtf8Array(buf));
+        console.info(req.msg, ...req.parts);
+    }
+
+    function LoggerError(buf) {
+        const req = JSON.parse(decodeFromUtf8Array(buf));
+        console.error(req.msg, ...req.parts);
+    }
+
     return {
         PrepareProposal,
         ProcessProposal,
@@ -181,6 +196,9 @@ export function consensus(storageMap, env, logType = LOG.error) {
         Commit,
         CheckTx,
         MerkleHash,
+        LoggerDebug,
+        LoggerInfo,
+        LoggerError,
     }
 }
 
