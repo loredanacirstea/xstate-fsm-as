@@ -77,7 +77,8 @@ export function setupNode(
     storage.setContextValue(CURRENT_NODE_ID, currentNodeId);
     storage.setContextValue(NODE_IPS, nodeIPs);
 
-    const data = JSON.parse<typestnd.InitChainSetup>(String.UTF8.decode(decodeBase64(initChainSetup).buffer));
+    const datajson = String.UTF8.decode(decodeBase64(initChainSetup).buffer);
+    const data = JSON.parse<typestnd.InitChainSetup>(datajson);
     initChain(data);
 
     const ips = JSON.parse<string[]>(nodeIPs);
@@ -95,7 +96,7 @@ function initChain(req: typestnd.InitChainSetup): void {
     // TODO what are the correct empty valuew?
     const emptyBlockId = new typestnd.BlockID("", new typestnd.PartSetHeader(0, ""))
     const last_commit_hash = ""
-    const currentHashes = new typestnd.CurrentState(
+    const currentState = new typestnd.CurrentState(
         req.chain_id,
         req.version,
         req.app_hash,
@@ -106,7 +107,8 @@ function initChain(req: typestnd.InitChainSetup): void {
     );
     setConsensusParams(req.consensus_params);
     setValidators(req.validators);
-    setCurrentState(currentHashes);
+    const valuestr = JSON.stringify<typestnd.CurrentState>(currentState);
+    setCurrentState(currentState);
 }
 
 export function processAppendEntries(
@@ -337,8 +339,7 @@ export function proposeBlock(
     if (maxbytes == -1) {
         maxbytes = MaxBlockSizeBytes;
     }
-    let maxgas = cparams.block.max_gas;
-    const batch = mempool.batch(maxgas, maxbytes);
+    const batch = mempool.batch(cparams.block.max_gas, maxbytes);
 
     // TODO
     // maxDataBytes := types.MaxDataBytes(maxBytes, evSize, state.Validators.Size())
@@ -383,7 +384,7 @@ export function appendLogInternal(
     const parsedTx =  new typestnd.Transaction(15000000);
     const cparams = getConsensusParams();
     const maxgas = cparams.block.max_gas;
-    if (maxgas < parsedTx.gas) {
+    if (maxgas > -1 && maxgas < parsedTx.gas) {
         return revert(`out of gas: ${parsedTx.gas}; max ${maxgas}`);
     }
     console.log("-mempool before add-")

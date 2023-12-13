@@ -100,6 +100,13 @@ export function wasmx(storageMap, env, logType = LOG.error) {
         console.log('-host-stopInterval');
     }
 
+    function sha256(buf) {
+        if (logType > 0) {
+            console.log('-host-sha256', [...new Uint8Array(buf)]);
+        }
+        return new Uint8Array(0);
+    }
+
     return {
         finish,
         stop,
@@ -115,6 +122,7 @@ export function wasmx(storageMap, env, logType = LOG.error) {
         grpcRequest,
         startInterval,
         stopInterval,
+        sha256,
     }
 }
 
@@ -159,12 +167,20 @@ export function consensus(storageMap, env, logType = LOG.error) {
         return encodeToUtf8Array(JSON.stringify(resp));
     }
 
+    function MerkleHash(buf) {
+        if (logType > 0) {
+            console.log('-host-MerkleHash', [...new Uint8Array(buf)]);
+        }
+        return new Uint8Array(0);
+    }
+
     return {
         PrepareProposal,
         ProcessProposal,
         FinalizeBlock,
         Commit,
         CheckTx,
+        MerkleHash,
     }
 }
 

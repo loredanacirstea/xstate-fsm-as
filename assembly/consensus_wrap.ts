@@ -15,6 +15,8 @@ import {
     ResponseCheckTx,
 } from './types_tendermint';
 
+// @ts-ignore
+@serializable
 class MerkleSlices {
 	slices: string[] // base64 encoded
     constructor(slices: string[]) {

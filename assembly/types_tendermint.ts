@@ -686,7 +686,7 @@ export class Mempool {
         let batch: MempoolBatch = new MempoolBatch([], 0);
         let cummulatedBytes: i64 = 0;
         for (let i = 0; i < this.txs.length; i++) {
-            if (maxGas < (batch.cummulatedGas + this.gas[i])) {
+            if (maxGas > -1 && maxGas < (batch.cummulatedGas + this.gas[i])) {
                 break;
             }
             const bytelen = base64Len(this.txs[i]);
