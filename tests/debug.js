@@ -68,6 +68,11 @@ async function instantiate(module, imports = {}) {
         value = __liftBuffer(value >>> 0);
         return __lowerBuffer(__module0.sha256(value)) || __notnull();
       },
+      setReturnData(value) {
+        // assembly/wasmx/setReturnData(~lib/arraybuffer/ArrayBuffer) => void
+        value = __liftBuffer(value >>> 0);
+        __module0.setReturnData(value);
+      },
       call(data) {
         // assembly/wasmx/call(~lib/arraybuffer/ArrayBuffer) => ~lib/arraybuffer/ArrayBuffer
         data = __liftBuffer(data >>> 0);
@@ -87,6 +92,10 @@ async function instantiate(module, imports = {}) {
       getCallData() {
         // assembly/wasmx/getCallData() => ~lib/arraybuffer/ArrayBuffer
         return __lowerBuffer(__module0.getCallData()) || __notnull();
+      },
+      getReturnData() {
+        // assembly/wasmx/getReturnData() => ~lib/arraybuffer/ArrayBuffer
+        return __lowerBuffer(__module0.getReturnData()) || __notnull();
       },
       finish(value) {
         // assembly/wasmx/finish(~lib/arraybuffer/ArrayBuffer) => void

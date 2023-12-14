@@ -107,6 +107,20 @@ export function wasmx(storageMap, env, logType = LOG.error) {
         return new Uint8Array(0);
     }
 
+    function setReturnData(buf) {
+        if (logType > 0) {
+            console.log('-host-setReturnData', [...new Uint8Array(buf)]);
+        }
+        env.ReturnData = buf;
+    }
+
+    function getReturnData() {
+        if (logType > 0) {
+            console.log('-host-getReturnData');
+        }
+        return env.ReturnData || new Uint8Array(0);
+    }
+
     return {
         finish,
         stop,
@@ -123,6 +137,8 @@ export function wasmx(storageMap, env, logType = LOG.error) {
         startInterval,
         stopInterval,
         sha256,
+        setReturnData,
+        getReturnData,
     }
 }
 

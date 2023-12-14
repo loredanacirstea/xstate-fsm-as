@@ -12,7 +12,7 @@ import {
 import { hexToUint8Array, revert, parseInt32, parseInt64, i32ToUint8ArrayBE, uint8ArrayToHex, i64ToUint8ArrayBE } from "./utils";
 import { LogEntry, TransactionResponse, AppendEntry, AppendEntryResponse } from "./types_raft";
 import * as typestnd from "./types_tendermint";
-import { LoggerError } from "./consensus";
+import { LoggerDebug, LoggerError } from "./consensus";
 
 // start at 0 TODO?
 const LOG_START = 1;
@@ -76,6 +76,8 @@ export function setupNode(
         revert("no initChainSetup found");
     }
     storage.setContextValue(CURRENT_NODE_ID, currentNodeId);
+    // TODO ID@host:ip
+    // 6efc12ab37fc0e096d8618872f6930df53972879@0.0.0.0:26757
     storage.setContextValue(NODE_IPS, nodeIPs);
 
     const datajson = String.UTF8.decode(decodeBase64(initChainSetup).buffer);
@@ -171,7 +173,7 @@ export function sendHeartbeatResponse(
     // TODO when not successful
     const response = new AppendEntryResponse(termId, true);
     consensuswrap.LoggerDebug("send heartbeat response", ["termId", termId.toString(), "success", "true"])
-    wasmx.finish(String.UTF8.encode(JSON.stringify<AppendEntryResponse>(response)));
+    wasmx.setReturnData(String.UTF8.encode(JSON.stringify<AppendEntryResponse>(response)));
 }
 
 export function sendAppendEntries(
@@ -181,7 +183,7 @@ export function sendAppendEntries(
     // go through each node
     const nodeId = getCurrentNodeId();
     const ips = getNodeIPs();
-    consensuswrap.LoggerDebug("diseminate entries...", ["nodeId", nodeId.toString()])
+    consensuswrap.LoggerDebug("diseminate entries...", ["nodeId", nodeId.toString(), "ips", JSON.stringify<Array<string>>(ips)])
     for (let i = 0; i < ips.length; i++) {
         if (nodeId === i) continue;
         sendAppendEntry(i, ips[i]);
@@ -218,8 +220,9 @@ function checkCommits(): void {
             count += 1;
         }
     }
-    consensuswrap.LoggerDebug("committing diseminated block", ["height", nextCommit.toString(), "nodes_count", len.toString(), "nodes_received", count.toString()])
-    if (count >= majority) {
+    const committing = count >= majority;
+    consensuswrap.LoggerDebug("committing diseminated block", ["height", nextCommit.toString(), "nodes_count", len.toString(), "nodes_received", count.toString(), "committing", committing.toString()])
+    if (committing) {
         // We commit the state
         startBlockFinalization(nextCommit);
         // update last commited!
@@ -258,7 +261,7 @@ export function sendAppendEntry(
         getCommitIndex(),
     )
     const datastr = JSON.stringify<AppendEntry>(data);
-    consensuswrap.LoggerDebug("diseminate append entry...", ["nodeId", nodeId.toString(), "receiver", nodeIp, "from", nextIndex.toString(), "to", lastIndex.toString()])
+    consensuswrap.LoggerDebug("diseminate append entry...", ["nodeId", nodeId.toString(), "receiver", nodeIp, "count", entries.length.toString(), "from", nextIndex.toString(), "to", lastIndex.toString()])
     const dataBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(datastr)));
     // we send the request to the same contract
     const contract = wasmx.getAddress();
@@ -266,7 +269,7 @@ export function sendAppendEntry(
     const resp = JSON.parse<AppendEntryResponse>(response);
     // TODO something with resp.term
     if (resp.success) {
-        nextIndexPerNode[nodeId] = lastIndex;
+        nextIndexPerNode[nodeId] = nextIndex + entries.length;
         setNextIndexArray(nextIndexPerNode);
     }
 }
@@ -322,7 +325,7 @@ export function sendNewTransactionResponse(
         entry.leaderId,
         entry.index,
     );
-    wasmx.finish(String.UTF8.encode(JSON.stringify<TransactionResponse>(response)));
+    wasmx.setReturnData(String.UTF8.encode(JSON.stringify<TransactionResponse>(response)));
 }
 
 export function appendLog(
@@ -562,8 +565,11 @@ export function appendLogEntry(
     entry: LogEntry,
 ): void {
     const index = getLogCount() + 1;
-    // TODO entry may be sent multiple times, we need to see if we already added it
     // and just return if already saved
+    if (index > entry.index) {
+        consensuswrap.LoggerDebug("already appended entry", ["height", entry.index.toString()])
+        return;
+    }
     if (index !== entry.index) {
         revert(`mismatched index while appending log entry: expected ${index}, found ${entry.index}`);
     }

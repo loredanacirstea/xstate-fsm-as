@@ -8,6 +8,8 @@ export declare function storageStore(key: ArrayBuffer, value: ArrayBuffer): void
 export declare function storageLoad(key: ArrayBuffer): ArrayBuffer
 
 export declare function log(value: ArrayBuffer): void
+export declare function getReturnData(): ArrayBuffer
+export declare function setReturnData(value: ArrayBuffer): void
 export declare function finish(value: ArrayBuffer): void
 export declare function revert(message: ArrayBuffer): void
 

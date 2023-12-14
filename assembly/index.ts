@@ -30,7 +30,9 @@ export function main(): u8[] {
     if (calldata.run !== null) {
       const event = calldata.run!.event;
       const _event = new EventClass(event.type, event.params);
-      result = runInternal(config, _event);
+      runInternal(config, _event);
+      // we may have set the return data during execution
+      result = wasmx.getReturnData();
     } else if (calldata.instantiate !== null) {
       const calld = calldata.instantiate!;
       _instantiate(config, calld.initialState, calld.context);
