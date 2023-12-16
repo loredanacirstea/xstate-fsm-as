@@ -33,6 +33,13 @@ async function instantiate(module, imports = {}) {
         // ~lib/bindings/dom/Date.now() => f64
         return Date.now();
       },
+      seed() {
+        // ~lib/builtins/seed() => f64
+        return (() => {
+          // @external.js
+          return Date.now() * Math.random();
+        })();
+      },
     }),
     wasmx: Object.assign(Object.create(__module0), {
       storageLoad(key) {

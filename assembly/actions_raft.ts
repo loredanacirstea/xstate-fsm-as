@@ -10,7 +10,7 @@ import {
   ActionParam,
 } from './types';
 import { hexToUint8Array, revert, parseInt32, parseInt64, i32ToUint8ArrayBE, uint8ArrayToHex, i64ToUint8ArrayBE } from "./utils";
-import { LogEntry, TransactionResponse, AppendEntry, AppendEntryResponse, VoteResponse } from "./types_raft";
+import { LogEntry, TransactionResponse, AppendEntry, AppendEntryResponse, VoteResponse, VoteRequest } from "./types_raft";
 import * as typestnd from "./types_tendermint";
 import { LoggerDebug, LoggerError } from "./consensus";
 
@@ -81,16 +81,19 @@ export function elapsedNotReset(
 export function setRandomElectionTimeout(
     params: ActionParam[],
     event: EventObject,
-) {
+): void {
     let min: string = "";
     let max: string = "";
-    for (let i = 0; i < event.params.length; i++) {
-        if (event.params[i].key === "min") {
-            min = event.params[i].value;
+    if (params.length == 0) {
+        params = event.params;
+    }
+    for (let i = 0; i < params.length; i++) {
+        if (params[i].key === "min") {
+            min = params[i].value;
             continue;
         }
-        if (event.params[i].key === "max") {
-            max = event.params[i].value;
+        if (params[i].key === "max") {
+            max = params[i].value;
             continue;
         }
     }
@@ -106,13 +109,14 @@ export function setRandomElectionTimeout(
     electionReset();
 }
 
-export function receiveVoteRequest(
+// received vote request
+export function vote(
     params: ActionParam[],
     event: EventObject,
-) {
+): void {
     let termId: i32 = 0;
     let candidateId: i32 = 0;
-    let lastLogIndex: i32 = 0;
+    let lastLogIndex: i64 = 0;
     let lastLogTerm: i32 = 0;
     for (let i = 0; i < event.params.length; i++) {
         if (event.params[i].key === "termId") {
@@ -147,7 +151,87 @@ export function receiveVoteRequest(
     voteInternal(termId, candidateId, lastLogIndex, lastLogTerm);
 }
 
-function voteInternal(termId: i32, candidateId: i32, lastLogIndex: i64, lastLogTerm: i32) {
+export function incrementCurrentTerm(
+    params: ActionParam[],
+    event: EventObject,
+): void {
+    const termId = getTermId();
+    setTermId(termId + 1);
+}
+
+export function selfVote(
+    params: ActionParam[],
+    event: EventObject,
+): void {
+    const myId = getCurrentNodeId();
+    setVotedFor(myId);
+    // initialize voting array for this node's election cycle
+    const ips = getNodeIPs();
+    const voteArray = new Array<i32>(ips.length);
+    for (let i = 0; i < ips.length; i++) {
+        voteArray[i] = 0;
+    }
+    voteArray[myId] = 1;
+    setVoteIndexArray(voteArray);
+}
+
+export function sendVoteRequests(
+    params: ActionParam[],
+    event: EventObject,
+): void {
+    const termId = getTermId();
+    const candidateId = getCurrentNodeId();
+    const lastEntry = getLastLog();
+    const lastLogIndex = lastEntry.index;
+    const lastLogTerm = lastEntry.termId;
+
+    // iterate through the other nodes and send a VoteRequest
+    const request = new VoteRequest(termId, candidateId, lastLogIndex, lastLogTerm);
+    const ips = getNodeIPs();
+    consensuswrap.LoggerDebug("sending vote requests...", ["candidateId", candidateId.toString(), "termId", termId.toString(), "lastLogIndex", lastLogIndex.toString(), "lastLogTerm", lastLogTerm.toString(), "ips", JSON.stringify<Array<string>>(ips)])
+    for (let i = 0; i < ips.length; i++) {
+        if (candidateId === i) continue;
+        sendVoteRequest(i, ips[i], request, termId);
+    }
+}
+
+export function isVotedLeader(
+    params: ActionParam[],
+    event: EventObject,
+): boolean {
+    // check if we have a vote majority
+    const voteArray = getVoteIndexArray();
+    let count = 0;
+    for (let i = 0; i < voteArray.length; i++) {
+        count += voteArray[i];
+    }
+    const len = voteArray.length;
+    const majority = i64(f64.floor(f64(len) / 2) + 1);
+    return count >= majority;
+}
+
+function sendVoteRequest(nodeId: i32, nodeIp: string, request: VoteRequest, termId: i32): void {
+    const datastr = JSON.stringify<VoteRequest>(request);
+    const dataBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(datastr)));
+    const contract = wasmx.getAddress();
+    const response = wasmxwrap.grpcRequest(nodeIp, Uint8Array.wrap(contract), dataBase64);
+    const resp = JSON.parse<VoteResponse>(response);
+    // if vote granted, add to the votes and check that we have majority
+    if (resp.voteGranted) {
+        const voteArray = getVoteIndexArray();
+        voteArray[nodeId] = 1;
+        setVoteIndexArray(voteArray);
+    } else {
+        // update our termId if we are behind
+        if (resp.termId > termId) {
+            setTermId(resp.termId);
+        }
+        // TODO do we need to rollback entries?
+    }
+}
+
+// TODO lastLogTerm
+function voteInternal(termId: i32, candidateId: i32, lastLogIndex: i64, lastLogTerm: i32): void {
     const mytermId = getTermId();
     let response = new VoteResponse(mytermId, true);
     if (termId < mytermId) {
@@ -160,12 +244,18 @@ function voteInternal(termId: i32, candidateId: i32, lastLogIndex: i64, lastLogT
         setTermId(termId);
         setVotedFor(candidateId);
     } else {
-        const votedFor = getVotedFor();
         // if we already voted, we do not grant a new vote
-        if (votedFor != 0) {
+        if (hasVotedFor()) {
             response = new VoteResponse(mytermId, false);
         } else {
-            setVotedFor(candidateId);
+            // candidate’s log is at least as up-to-date as receiver’s log
+            const lastIndex = getLogCount();
+            if (lastLogIndex < lastIndex) {
+                consensuswrap.LoggerDebug("candidate is not up-to-date", ["candidateLastIndex", lastLogIndex.toString(), "ourLastIndex", lastIndex.toString(), "candidateId", candidateId.toString()])
+                response = new VoteResponse(mytermId, false);
+            } else {
+                setVotedFor(candidateId);
+            }
         }
     }
     wasmx.setReturnData(String.UTF8.encode(JSON.stringify<VoteResponse>(response)));
@@ -203,9 +293,7 @@ export function setupNode(
     }
     storage.setContextValue(CURRENT_NODE_ID, currentNodeId);
 
-    // !! nodeIps always have self at index 0
-    // this also allows us to consider that votedFor = 0 means we have not voted
-    // (if we are a Candidate voting for ourselves, we cannot receive voting requests anyway)
+    // !! nodeIps must be the same for all nodes
 
     // TODO ID@host:ip
     // 6efc12ab37fc0e096d8618872f6930df53972879@0.0.0.0:26757
@@ -758,6 +846,8 @@ const MATCH_INDEX_ARRAY = "matchIndex";
 // for each server, index of the next log entry to send to that server (initialized to leader last log index + 1)
 const NEXT_INDEX_ARRAY = "nextIndex";
 
+const VOTE_INDEX_ARRAY = "voteIndex";
+
 //// Cosmos-specific
 const MEMPOOL_KEY = "mempool";
 
@@ -783,13 +873,29 @@ function setTermId(value: i32): void {
     storage.setContextValue(TERM_ID, value.toString());
 }
 
-function getVotedFor(): i32 {
+// function getVotedFor(): i32 {
+//     const value = getVotedForInternal();
+//     if (value > 0) {
+//         return value - 1;
+//     }
+//     return value;
+// }
+
+function hasVotedFor(): boolean {
+    return getVotedForInternal() == 0;
+}
+
+function getVotedForInternal(): i32 {
     const value = storage.getContextValue(VOTED_FOR_KEY);
     if (value === "") return i32(0);
     return parseInt32(value);
 }
 
 function setVotedFor(value: i32): void {
+    setVotedForInternal(value + 1);
+}
+
+function setVotedForInternal(value: i32): void {
     storage.setContextValue(VOTED_FOR_KEY, value.toString());
 }
 
@@ -831,14 +937,6 @@ function setMatchIndexArray(value: Array<i64>): void {
     storage.setContextValue(MATCH_INDEX_ARRAY, JSON.stringify<Array<i64>>(value));
 }
 
-function getNextIndexArray(): Array<i64> {
-    const valuestr = storage.getContextValue(NEXT_INDEX_ARRAY);
-    let value: Array<i64> = [];
-    if (valuestr === "") return value;
-    value = JSON.parse<Array<i64>>(valuestr);
-    return value;
-}
-
 function getNodeIPs(): Array<string> {
     const valuestr = storage.getContextValue(NODE_IPS);
     let value: Array<string> = [];
@@ -847,8 +945,28 @@ function getNodeIPs(): Array<string> {
     return value;
 }
 
+function getNextIndexArray(): Array<i64> {
+    const valuestr = storage.getContextValue(NEXT_INDEX_ARRAY);
+    let value: Array<i64> = [];
+    if (valuestr === "") return value;
+    value = JSON.parse<Array<i64>>(valuestr);
+    return value;
+}
+
 function setNextIndexArray(arr: Array<i64>): void {
     storage.setContextValue(NEXT_INDEX_ARRAY, JSON.stringify<Array<i64>>(arr));
+}
+
+function getVoteIndexArray(): Array<i32> {
+    const valuestr = storage.getContextValue(VOTE_INDEX_ARRAY);
+    let value: Array<i32> = [];
+    if (valuestr === "") return value;
+    value = JSON.parse<Array<i32>>(valuestr);
+    return value;
+}
+
+function setVoteIndexArray(arr: Array<i32>): void {
+    storage.setContextValue(VOTE_INDEX_ARRAY, JSON.stringify<Array<i32>>(arr));
 }
 
 export function getMempool(): typestnd.Mempool {
@@ -1072,5 +1190,5 @@ function getHeaderHash(header: typestnd.Header): string {
 }
 
 function getRandomInRange(min: i64, max: i64): i64 {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
+    return i64(Math.floor(Math.random() * f64((max - min + 1)))) + min;
 }

@@ -161,9 +161,9 @@ export function consensus(storageMap, env, logType = LOG.error) {
 
     function FinalizeBlock(buf) {
         if (logType > 0) {
-            console.log('-host-FinalizeBlock', [...new Uint8Array(buf)]);
+            console.log('-host-FinalizeBlock');
         }
-        const resp = {events: [], tx_results: [], validator_updates: [], consensus_param_updates: {"block":{"max_bytes":2000000,"max_gas":30000000},"evidence":{"max_age_num_blocks":302400,"max_age_duration":1814400,"max_bytes":10000},"validator":{"pub_key_types":["ed25519"]}}, app_hash: "O0hNTDaj3XTRiEIeqqlo4+dxTrmV3JlHbCOnyOX24f8="}
+        const resp = {events: [], tx_results: [], validator_updates: [], consensus_param_updates: {"block":{"max_bytes":2000000,"max_gas":30000000},"evidence":{"max_age_num_blocks":302400,"max_age_duration":1814400,"max_bytes":10000},"validator":{"pub_key_types":["ed25519"]},"version":{"app":0},"abci":{"vote_extensions_enable_height":0}}, app_hash: "O0hNTDaj3XTRiEIeqqlo4+dxTrmV3JlHbCOnyOX24f8="}
         return encodeToUtf8Array(JSON.stringify(resp));
     }
 

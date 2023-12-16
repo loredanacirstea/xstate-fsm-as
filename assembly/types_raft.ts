@@ -105,6 +105,21 @@ export class AppendEntryResponse {
 
 // @ts-ignore
 @serializable
+export class VoteRequest {
+    termId: i32;
+    candidateId: i32;
+    lastLogIndex: i64;
+    lastLogTerm: i32;
+    constructor(termId: i32, candidateId: i32, lastLogIndex: i64, lastLogTerm: i32) {
+        this.termId = termId;
+        this.candidateId = candidateId;
+        this.lastLogIndex = lastLogIndex;
+        this.lastLogTerm = lastLogTerm;
+    }
+}
+
+// @ts-ignore
+@serializable
 export class VoteResponse {
     termId: i32;
     voteGranted: bool;

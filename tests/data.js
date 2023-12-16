@@ -585,3 +585,196 @@ export const RAFTLogReplication = {
       },
     },
 }
+
+export const RAFT_Full = {
+    context: {
+      log: "",
+      nodeIPs: "[]",
+      votedFor: "0",
+      nextIndex: "[1,1]",
+      matchIndex: "[0,0]",
+      commitIndex: "0",
+      currentTerm: "0",
+      lastApplied: "0",
+      max_tx_bytes: "65536",
+      prevLogIndex: "0",
+      currentNodeId: "0",
+      electionReset: "0",
+      max_block_gas: "20000000",
+      electionTimeout: "0",
+      heartbeatTimeout: 5000,
+    },
+    id: "RAFT-FULL-1",
+    initial: "uninitialized",
+    states: {
+      uninitialized: {
+        on: {
+          initialize: {
+            target: "initialized",
+          },
+        },
+      },
+      initialized: {
+        initial: "Follower",
+        states: {
+          Follower: {
+            entry: {
+              type: "setRandomElectionTimeout",
+              params: {
+                max: "300",
+                min: "150",
+              },
+            },
+            after: {
+              electionTimeout: {
+                target: "#RAFT-FULL-1.initialized.Candidate",
+                guard: "elapsedNotReset",
+                actions: [],
+                meta: {},
+              },
+            },
+            on: {
+              receiveHeartbeat: {
+                target: "Follower",
+                actions: [
+                  {
+                    type: "processAppendEntries",
+                  },
+                  {
+                    type: "sendHeartbeatResponse",
+                  },
+                ],
+              },
+              setupNode: {
+                target: "Follower",
+                actions: {
+                  type: "setupNode",
+                },
+              },
+              receiveVoteRequest: {
+                target: "Follower",
+                actions: {
+                  type: "vote",
+                },
+              },
+            },
+          },
+          Candidate: {
+            entry: [
+              {
+                type: "incrementCurrentTerm",
+              },
+              {
+                type: "selfVote",
+              },
+              {
+                type: "setRandomElectionTimeout",
+                params: {
+                  max: "300",
+                  min: "150",
+                },
+              },
+              {
+                type: "sendVoteRequests",
+              },
+            ],
+            after: {
+              electionTimeout: {
+                target: "#RAFT-FULL-1.initialized.Candidate",
+                guard: "elapsedNotReset",
+                actions: [],
+                meta: {},
+              },
+            },
+            always: {
+              target: "Leader",
+              guard: "isVotedLeader",
+            },
+            on: {
+              receiveHeartbeat: {
+                target: "Follower",
+                actions: [
+                  {
+                    type: "processAppendEntries",
+                  },
+                  {
+                    type: "sendHeartbeatResponse",
+                  },
+                ],
+              },
+            },
+          },
+          Leader: {
+            entry: [
+              {
+                type: "initializeNextIndex",
+              },
+              {
+                type: "initializeMatchIndex",
+              },
+            ],
+            initial: "active",
+            states: {
+              active: {
+                entry: [
+                  {
+                    type: "sendAppendEntries",
+                  },
+                  {
+                    type: "proposeBlock",
+                  },
+                  {
+                    type: "commitBlocks",
+                  },
+                ],
+                after: {
+                  heartbeatTimeout: {
+                    target: "#RAFT-FULL-1.initialized.Leader.active",
+                    actions: [],
+                    meta: {},
+                  },
+                },
+                on: {
+                  newTransaction: {
+                    actions: [
+                      {
+                        type: "appendLog",
+                      },
+                      {
+                        type: "sendNewTransactionResponse",
+                      },
+                    ],
+                  },
+                  heartbeatResponse: {
+                    target: "active",
+                    actions: [
+                      {
+                        type: "updateNextIndex",
+                      },
+                      {
+                        type: "updateMatchIndex",
+                      },
+                      {
+                        type: "commitTransaction",
+                      },
+                    ],
+                  },
+                  start: {
+                    target: "active",
+                  },
+                },
+              },
+            },
+            on: {
+              reset: {
+                target: "Follower",
+              },
+            },
+          },
+        },
+        on: {
+          start: {},
+        },
+      },
+    }
+}

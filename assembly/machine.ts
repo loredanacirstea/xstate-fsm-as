@@ -121,6 +121,7 @@ function executeGuard(
     if (guard === "hasEnoughBalance") return actionsErc20.hasEnoughBalance([], event);
     if (guard === "hasEnoughAllowance") return actionsErc20.hasEnoughAllowance([], event);
     if (guard === "elapsedNotReset") return actionsRaft.elapsedNotReset([], event);
+    if (guard === "isVotedLeader") return actionsRaft.isVotedLeader([], event);
 
     // TODO processExternalCall
 
@@ -265,6 +266,22 @@ function executeStateAction(
       actionsRaft.initializeMatchIndex(action.params, event);
       return;
     }
+    if (actionType === "incrementCurrentTerm") {
+      actionsRaft.incrementCurrentTerm(action.params, event);
+      return;
+    }
+    if (actionType === "vote") {
+      actionsRaft.vote(action.params, event);
+      return;
+    }
+    if (actionType === "sendRequestVote") {
+      actionsRaft.sendVoteRequests(action.params, event);
+      return;
+    }
+    if (actionType === "noaction") {
+      noaction(action.params, event);
+      return;
+    }
     // If action is not a local action, then it is an external action
     const success = processExternalCall(service, state, event, action);
     if (!success) {
@@ -275,6 +292,11 @@ function executeStateAction(
     // action.type
     // action.params
 }
+
+function noaction(
+  params: ActionParam[],
+  event: EventObject,
+): void {}
 
 function processExternalCall(
     service: Service,
