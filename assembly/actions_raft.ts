@@ -10,9 +10,11 @@ import {
   ActionParam,
 } from './types';
 import { hexToUint8Array, revert, parseInt32, parseInt64, i32ToUint8ArrayBE, uint8ArrayToHex, i64ToUint8ArrayBE } from "./utils";
-import { LogEntry, TransactionResponse, AppendEntry, AppendEntryResponse } from "./types_raft";
+import { LogEntry, TransactionResponse, AppendEntry, AppendEntryResponse, VoteResponse } from "./types_raft";
 import * as typestnd from "./types_tendermint";
 import { LoggerDebug, LoggerError } from "./consensus";
+
+// Docs: https://raft.github.io/raft.pdf
 
 // start at 0 TODO?
 const LOG_START = 1;
@@ -45,6 +47,130 @@ export const BlockPartSizeBytes: u32 = 65536 // 64kB
 // MaxBlockPartsCount is the maximum number of block parts.
 export const MaxBlockPartsCount = (MaxBlockSizeBytes / BlockPartSizeBytes) + 1
 
+export function initializeNextIndex(
+    params: ActionParam[],
+    event: EventObject,
+): void {
+    const lastIndex = getLogCount();
+    const nextIndex = lastIndex + 1;
+    const nextIndexes = getNextIndexArray();
+    for (let i = 0; i < nextIndexes.length; i++) {
+        nextIndexes[i] = nextIndex;
+    }
+    setNextIndexArray(nextIndexes);
+}
+
+export function initializeMatchIndex(
+    params: ActionParam[],
+    event: EventObject,
+): void {
+    const matchIndexes = getMatchIndexArray();
+    for (let i = 0; i < matchIndexes.length; i++) {
+        matchIndexes[i] = 0;
+    }
+    setMatchIndexArray(matchIndexes);
+}
+
+export function elapsedNotReset(
+    params: ActionParam[],
+    event: EventObject,
+): boolean {
+    return !getElectionReset();
+}
+
+export function setRandomElectionTimeout(
+    params: ActionParam[],
+    event: EventObject,
+) {
+    let min: string = "";
+    let max: string = "";
+    for (let i = 0; i < event.params.length; i++) {
+        if (event.params[i].key === "min") {
+            min = event.params[i].value;
+            continue;
+        }
+        if (event.params[i].key === "max") {
+            max = event.params[i].value;
+            continue;
+        }
+    }
+    if (min === "") {
+        revert("no min found");
+    }
+    if (max === "") {
+        revert("no max found");
+    }
+    const min_ = parseInt64(min)
+    const max_ = parseInt64(max)
+    setElectionTimeout(getRandomInRange(min_, max_));
+    electionReset();
+}
+
+export function receiveVoteRequest(
+    params: ActionParam[],
+    event: EventObject,
+) {
+    let termId: i32 = 0;
+    let candidateId: i32 = 0;
+    let lastLogIndex: i32 = 0;
+    let lastLogTerm: i32 = 0;
+    for (let i = 0; i < event.params.length; i++) {
+        if (event.params[i].key === "termId") {
+            if (event.params[i].value === "") {
+                revert("no termId found");
+            }
+            termId = parseInt32(event.params[i].value);
+            continue;
+        }
+        if (event.params[i].key === "candidateId") {
+            if (event.params[i].value === "") {
+                revert("no candidateId found");
+            }
+            candidateId = parseInt32(event.params[i].value);
+            continue;
+        }
+        if (event.params[i].key === "lastLogIndex") {
+            if (event.params[i].value === "") {
+                revert("no lastLogIndex found");
+            }
+            lastLogIndex = parseInt64(event.params[i].value);
+            continue;
+        }
+        if (event.params[i].key === "lastLogTerm") {
+            if (event.params[i].value === "") {
+                revert("no lastLogTerm found");
+            }
+            lastLogTerm = parseInt32(event.params[i].value);
+            continue;
+        }
+    }
+    voteInternal(termId, candidateId, lastLogIndex, lastLogTerm);
+}
+
+function voteInternal(termId: i32, candidateId: i32, lastLogIndex: i64, lastLogTerm: i32) {
+    const mytermId = getTermId();
+    let response = new VoteResponse(mytermId, true);
+    if (termId < mytermId) {
+        response = new VoteResponse(mytermId, false);
+    } else if (termId > mytermId) {
+        // TODO what now?
+        // this vote request should override what we have
+        // TODO - we need to rollback uncommited changes from mytermId to termId
+        // update termId & votedFor
+        setTermId(termId);
+        setVotedFor(candidateId);
+    } else {
+        const votedFor = getVotedFor();
+        // if we already voted, we do not grant a new vote
+        if (votedFor != 0) {
+            response = new VoteResponse(mytermId, false);
+        } else {
+            setVotedFor(candidateId);
+        }
+    }
+    wasmx.setReturnData(String.UTF8.encode(JSON.stringify<VoteResponse>(response)));
+}
+
 export function setupNode(
     params: ActionParam[],
     event: EventObject,
@@ -76,6 +202,11 @@ export function setupNode(
         revert("no initChainSetup found");
     }
     storage.setContextValue(CURRENT_NODE_ID, currentNodeId);
+
+    // !! nodeIps always have self at index 0
+    // this also allows us to consider that votedFor = 0 means we have not voted
+    // (if we are a Candidate voting for ourselves, we cannot receive voting requests anyway)
+
     // TODO ID@host:ip
     // 6efc12ab37fc0e096d8618872f6930df53972879@0.0.0.0:26757
     storage.setContextValue(NODE_IPS, nodeIPs);
@@ -126,6 +257,7 @@ export function processAppendEntries(
     // here we receive new entries/logs/blocks
     // we need to run ProcessProposal on each block
     // and then FinalizeBlock & Commit
+    // TODO we also look at termId, as we might need to rollback changes in case of a network split
     let entryBase64: string = event.params[0].value;
     const entryStr = String.UTF8.decode(decodeBase64(entryBase64).buffer);
     consensuswrap.LoggerDebug("received new entries", ["AppendEntry", entryStr]);
@@ -147,7 +279,7 @@ export function processAppendEntries(
     // entry.leaderId ?
     const lastCommitIndex = getCommitIndex();
     for (let i = lastCommitIndex + 1; i <= entry.leaderCommit; i++) {
-        startBlockFinalization(i);
+        startBlockFinalizationFollower(i);
         setCommitIndex(i);
     }
 }
@@ -197,7 +329,7 @@ export function commitBlocks(
     checkCommits();
 }
 
-// this gets called each reentry in active state
+// this gets called each reentry in Leader.active state
 function checkCommits(): void {
     const lastCommitIndex = getLastApplied();
     // all commited + uncommited logs
@@ -222,9 +354,13 @@ function checkCommits(): void {
     }
     const committing = count >= majority;
     consensuswrap.LoggerDebug("committing diseminated block", ["height", nextCommit.toString(), "nodes_count", len.toString(), "nodes_received", count.toString(), "committing", committing.toString()])
+
+    // TODO If AppendEntries fails because of log inconsistency: decrement nextIndex and retry
     if (committing) {
+        // TODO commit only if entry.term == currentTerm:
+
         // We commit the state
-        startBlockFinalization(nextCommit);
+        startBlockFinalizationLeader(nextCommit);
         // update last commited!
         setLastApplied(nextCommit);
     }
@@ -272,46 +408,6 @@ export function sendAppendEntry(
         nextIndexPerNode[nodeId] = nextIndex + entries.length;
         setNextIndexArray(nextIndexPerNode);
     }
-}
-
-function updateNextIndex(
-    params: ActionParam[],
-    event: EventObject,
-): void {
-
-}
-
-function updateMatchIndex(
-    params: ActionParam[],
-    event: EventObject,
-): void {
-    let termId: i32 = 0;
-    let success: bool = false;
-    for (let i = 0; i < event.params.length; i++) {
-        if (event.params[i].key === "termId") {
-            termId = parseInt32(event.params[i].value);
-            continue;
-        }
-        if (event.params[i].key === "success") {
-            if (event.params[i].value === "")
-            if (event.params[i].value === "true") {
-                success = true;
-            }
-            continue;
-        }
-    }
-    // TODO termId
-    // TODO success false?
-    if (!success) return;
-    // const matchIndex = getMatchIndexArray();
-
-}
-
-function commitTransaction(
-    params: ActionParam[],
-    event: EventObject,
-): void {
-
 }
 
 export function sendNewTransactionResponse(
@@ -482,13 +578,31 @@ function startBlockProposal(txs: string[], cummulatedGas: i64, maxDataBytes: i64
     return appendLogInternalVerified(processReq, header, lastBlockCommit);
 }
 
-function startBlockFinalization(index: i64): void {
+function startBlockFinalizationLeader(index: i64): void {
     consensuswrap.LoggerInfo("start block finalization", ["height", index.toString()])
     // get entry and apply it
     const entry = getLogEntry(index);
     consensuswrap.LoggerDebug("start block finalization", ["height", index.toString(), "entry", entry])
 
     const entryobj = JSON.parse<LogEntry>(entry);
+    const currentTerm = getTermId();
+
+    if (currentTerm == entryobj.termId) {
+        return startBlockFinalizationInternal(entryobj);
+    } else consensuswrap.LoggerError("entry has current term mismatch", ["nodeType", "Leader", "currentTerm", currentTerm.toString(), "entryTermId", entryobj.termId.toString()])
+}
+
+function startBlockFinalizationFollower(index: i64): void {
+    consensuswrap.LoggerInfo("start block finalization", ["height", index.toString()])
+    // get entry and apply it
+    const entry = getLogEntry(index);
+    consensuswrap.LoggerDebug("start block finalization", ["height", index.toString(), "entry", entry])
+
+    const entryobj = JSON.parse<LogEntry>(entry);
+    return startBlockFinalizationInternal(entryobj);
+}
+
+function startBlockFinalizationInternal(entryobj: LogEntry): void {
     const processReqStr = String.UTF8.decode(decodeBase64(entryobj.data).buffer);
     const processReq = JSON.parse<typestnd.RequestProcessProposal>(processReqStr);
     const finalizeReq = new typestnd.RequestFinalizeBlock(
@@ -545,7 +659,7 @@ function startBlockFinalization(index: i64): void {
     const commitResponse = consensuswrap.Commit();
     // TODO commitResponse.retainHeight
     // Tendermint removes all data for heights lower than `retain_height`
-    consensuswrap.LoggerInfo("block finalized", ["height", index.toString()])
+    consensuswrap.LoggerInfo("block finalized", ["height", entryobj.index.toString()])
 }
 
 function appendLogInternalVerified(processReq: typestnd.RequestProcessProposal, header: typestnd.Header, blockCommit: typestnd.BlockCommit): void {
@@ -565,6 +679,7 @@ export function appendLogEntry(
     entry: LogEntry,
 ): void {
     const index = getLogCount() + 1;
+    // TODO rollback entries in case of a network split (e.g. entries with higher termId than we have have priority); they must be uncommited
     // and just return if already saved
     if (index > entry.index) {
         consensuswrap.LoggerDebug("already appended entry", ["height", entry.index.toString()])
@@ -623,10 +738,12 @@ export function getLogCountKey(): string {
 const NODE_IPS = "nodeIPs";
 const CURRENT_NODE_ID = "currentNodeId";
 const HEARTBEAT_TIMEOUT = "heartbeatTimeout";
+const ELECTION_TIMEOUT_KEY = "electionTimeout";
+const ELECTION_RESET_KEY = "electionReset";
 
 //// Persistent state on all servers:
 const TERM_ID = "currentTerm";
-// votedFor
+const VOTED_FOR_KEY = "votedFor"
 // log[]
 
 //// Volatile state on all servers:
@@ -664,6 +781,16 @@ function getTermId(): i32 {
 
 function setTermId(value: i32): void {
     storage.setContextValue(TERM_ID, value.toString());
+}
+
+function getVotedFor(): i32 {
+    const value = storage.getContextValue(VOTED_FOR_KEY);
+    if (value === "") return i32(0);
+    return parseInt32(value);
+}
+
+function setVotedFor(value: i32): void {
+    storage.setContextValue(VOTED_FOR_KEY, value.toString());
 }
 
 function getCurrentNodeId(): i32 {
@@ -836,6 +963,33 @@ export function setCurrentState(value: typestnd.CurrentState): void {
     storage.setContextValue(STATE_KEY, JSON.stringify<typestnd.CurrentState>(value));
 }
 
+export function getElectionTimeout(): i64 {
+    const value = storage.getContextValue(ELECTION_TIMEOUT_KEY);
+    if (value === "") return i64(0);
+    return parseInt64(value);
+}
+
+export function setElectionTimeout(value: i64): void {
+    storage.setContextValue(ELECTION_TIMEOUT_KEY, value.toString());
+}
+
+// 0 == true -> election time was reset by an event
+// 1 = false -> election time is ongoing
+export function getElectionReset(): boolean {
+    const value = storage.getContextValue(ELECTION_RESET_KEY);
+    if (value === "0") return true;
+    return false;
+}
+
+export function setElectionReset(value: boolean): void {
+    const _value = value ? "0" : "1";
+    storage.setContextValue(ELECTION_RESET_KEY, _value);
+}
+
+export function electionReset(): void {
+    setElectionReset(true);
+}
+
 // ValidatorSet.Validators hash (ValidatorInfo[] hash)
 // TODO cometbft protobuf encodes cmtproto.SimpleValidator
 function getValidatorsHash(validators: typestnd.ValidatorInfo[]): string {
@@ -915,4 +1069,8 @@ function getHeaderHash(header: typestnd.Header): string {
         header.proposer_address, // TODO transform hex to base64
     ]
     return consensuswrap.MerkleHash(data);
+}
+
+function getRandomInRange(min: i64, max: i64): i64 {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
 }

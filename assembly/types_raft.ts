@@ -79,6 +79,7 @@ export class AppendEntry {
     entries: Array<LogEntry>
     // leader’s commitIndex
     leaderCommit: i64;
+    // nodeIps: Array<string>;
     constructor(termId: i32, leaderId: i32, prevLogIndex: i64, prevLogTerm: i32, entries: Array<LogEntry>, leaderCommit: i64) {
         this.termId = termId;
         this.leaderId = leaderId;
@@ -99,5 +100,16 @@ export class AppendEntryResponse {
     constructor(termId: i32, success: bool) {
         this.termId = termId;
         this.success = success;
+    }
+}
+
+// @ts-ignore
+@serializable
+export class VoteResponse {
+    termId: i32;
+    voteGranted: bool;
+    constructor(termId: i32, voteGranted: bool) {
+        this.termId = termId;
+        this.voteGranted = voteGranted;
     }
 }

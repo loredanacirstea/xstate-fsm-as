@@ -120,6 +120,7 @@ function executeGuard(
     if (guard === "isAdmin") return isAdmin([]);
     if (guard === "hasEnoughBalance") return actionsErc20.hasEnoughBalance([], event);
     if (guard === "hasEnoughAllowance") return actionsErc20.hasEnoughAllowance([], event);
+    if (guard === "elapsedNotReset") return actionsRaft.elapsedNotReset([], event);
 
     // TODO processExternalCall
 
@@ -250,6 +251,18 @@ function executeStateAction(
     }
     if (actionType === "commitBlocks") {
       actionsRaft.commitBlocks(action.params, event);
+      return;
+    }
+    if (actionType === "setRandomElectionTimeout") {
+      actionsRaft.setRandomElectionTimeout(action.params, event);
+      return;
+    }
+    if (actionType === "initializeNextIndex") {
+      actionsRaft.initializeNextIndex(action.params, event);
+      return;
+    }
+    if (actionType === "initializeMatchIndex") {
+      actionsRaft.initializeMatchIndex(action.params, event);
       return;
     }
     // If action is not a local action, then it is an external action
