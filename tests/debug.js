@@ -91,10 +91,10 @@ async function instantiate(module, imports = {}) {
         value = __liftBuffer(value >>> 0);
         __module0.storageStore(key, value);
       },
-      startInterval(repeat, time, args) {
-        // assembly/wasmx/startInterval(i32, i64, ~lib/arraybuffer/ArrayBuffer) => i32
+      startTimeout(repeat, time, args) {
+        // assembly/wasmx/startTimeout(i32, i64, ~lib/arraybuffer/ArrayBuffer) => i32
         args = __liftBuffer(args >>> 0);
-        return __module0.startInterval(repeat, time, args);
+        return __module0.startTimeout(repeat, time, args);
       },
       getCallData() {
         // assembly/wasmx/getCallData() => ~lib/arraybuffer/ArrayBuffer

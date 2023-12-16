@@ -24,7 +24,7 @@ import {
   AssignAction,
   Transition,
 } from './types';
-import { hexToUint8Array, revert, getAddressHex } from "./utils";
+import { hexToUint8Array, revert, getAddressHex, parseInt32, parseInt64 } from "./utils";
 import * as storage from './storage';
 import * as actionsCounter from "./actions_counter";
 import * as actionsErc20 from "./actions_erc20";
@@ -33,6 +33,7 @@ import * as actionsRaft from "./actions_raft";
 const INIT_EVENT = new InitEvent();
 const ASSIGN_ACTION: AssignAction = 'xstate.assign';
 const WILDCARD = '*';
+const INTERVAL_ID_KEY = "intervalIdKey";
 
 export function instantiate(
   config: MachineExternal,
@@ -122,6 +123,7 @@ function executeGuard(
     if (guard === "hasEnoughAllowance") return actionsErc20.hasEnoughAllowance([], event);
     if (guard === "elapsedNotReset") return actionsRaft.elapsedNotReset([], event);
     if (guard === "isVotedLeader") return actionsRaft.isVotedLeader([], event);
+    if (guard === "ifIntervalActive") return ifIntervalActive([], event);
 
     // TODO processExternalCall
 
@@ -168,10 +170,13 @@ function executeStateActions(
     } else {
       delay = u64(delayKey);
     }
-    const args = new TimerArgs(delayKeys[i], state.value);
+    const intervalId = getIntervalId();
+    setIntervalId(intervalId + 1);
+    registerIntervalId(state.value, delayKeys[i], intervalId);
+    const args = new TimerArgs(delayKeys[i], state.value, intervalId);
     const argsStr = JSON.stringify<TimerArgs>(args);
-    const intervalId = wasmx.startInterval(i32(1), delay, String.UTF8.encode(argsStr));
-    console.debug("* intervalId: " + intervalId.toString());
+    wasmx.startTimeout(delay, String.UTF8.encode(argsStr));
+    console.debug("started timeout: " + intervalId.toString());
   }
 }
 
@@ -280,6 +285,10 @@ function executeStateAction(
     }
     if (actionType === "noaction") {
       noaction(action.params, event);
+      return;
+    }
+    if (actionType === "cancelActiveIntervals") {
+      cancelActiveIntervals(state, action.params, event);
       return;
     }
     // If action is not a local action, then it is an external action
@@ -806,7 +815,7 @@ export function equalState(state1: string, state2: string): boolean {
   return st1 === st2;
 }
 
-export function eventual(config: MachineExternal, intervalId: i32, args: TimerArgs): void {
+export function eventual(config: MachineExternal, args: TimerArgs): void {
   console.debug("* eventual: " + args.state + "--" + args.delay);
   const service = loadServiceFromConfig(config);
   const currentState = storage.getCurrentState();
@@ -839,10 +848,127 @@ export function eventual(config: MachineExternal, intervalId: i32, args: TimerAr
   }
   // just a copied transition
   let state = storage.getCurrentState();
-  let emptyEvent = new EventClass("", []);
+  // we add the interval id in the event
+  let intervalIdField = new ActionParam("intervalId", args.intervalId.toString())
+  let stateField = new ActionParam("state", args.state)
+  let delayField = new ActionParam("delay", args.delay)
+  let emptyEvent = new EventClass("", [intervalIdField, stateField, delayField]);
   state = service.machine.applyTransition(state, transition, emptyEvent);
   // Set new state before executing actions
   storage.setCurrentState(state);
   executeStateActions(service, state, emptyEvent);
   // TODO listeners?
+}
+
+function getIntervalId(): i64 {
+  const value = storage.getContextValue(INTERVAL_ID_KEY);
+  if (value === "") return i64(0);
+  return parseInt32(value);
+}
+
+function setIntervalId(value: i64): void {
+  storage.setContextValue(INTERVAL_ID_KEY, value.toString());
+}
+
+function registerIntervalIdKey(state: string, delay: string, intervalId: i64): string {
+  return `${state}_${delay}_${intervalId.toString()}`
+}
+
+function registerLastIntervalIdKey(state: string, delay: string): string {
+  return `${state}_${delay}}`
+}
+
+function registerIntervalId(state: string, delay: string, intervalId: i64): void {
+  storage.setContextValue(registerLastIntervalIdKey(state, delay), intervalId.toString());
+  storage.setContextValue(registerIntervalIdKey(state, delay, intervalId), "1");
+}
+
+function getLastIntervalId(state: string, delay: string): i64 {
+  const lastIntervalId = storage.getContextValue(registerLastIntervalIdKey(state, delay))
+  if (lastIntervalId == "") {
+    return 0;
+  }
+  return parseInt64(lastIntervalId);
+}
+
+function isRegisteredIntervalActive(state: string, delay: string, intervalId: i64): boolean {
+  const value = storage.getContextValue(registerIntervalIdKey(state, delay, intervalId));
+  if (value == "1") return true;
+  return false;
+}
+
+function cancelIntervals(state: string, delay: string): void {
+  const lastIntervalId = getLastIntervalId(state, delay)
+  tryCancelIntervals(state, delay, lastIntervalId);
+}
+
+function tryCancelIntervals(state: string, delay: string, intervalId: i64): void {
+  const active = isRegisteredIntervalActive(state, delay, intervalId);
+  // remove the interval data
+  storage.setContextValue(registerIntervalIdKey(state, delay, intervalId), "");
+  if (active) {
+    tryCancelIntervals(state, delay, intervalId - 1);
+  }
+}
+
+function cancelActiveIntervals(
+  state: State,
+  params: ActionParam[],
+  event: EventObject,
+): void {
+  if (params.length == 0) {
+    params = event.params;
+  }
+  let delay = "";
+  for (let i = 0; i < params.length; i++) {
+    if (params[i].key === "after") {
+      delay = params[i].value;
+        continue;
+    }
+  }
+  if (delay === "") {
+    revert("no delay found");
+}
+  cancelIntervals(state.value, delay);
+}
+
+function ifIntervalActive(
+  params: ActionParam[],
+  event: EventObject,
+): boolean {
+  if (params.length == 0) {
+    params = event.params;
+  }
+  let intervalIdStr = "";
+  let state = "";
+  let delay = "";
+  for (let i = 0; i < params.length; i++) {
+    if (params[i].key === "intervalId") {
+      intervalIdStr = params[i].value;
+        continue;
+    }
+    if (params[i].key === "state") {
+      state = params[i].value;
+        continue;
+    }
+    if (params[i].key === "delay") {
+      delay = params[i].value;
+        continue;
+    }
+  }
+  if (intervalIdStr === "") {
+      revert("no intervalId found");
+  }
+  if (state === "") {
+      revert("no state found");
+  }
+  if (delay === "") {
+      revert("no delay found");
+  }
+  const intervalId = parseInt64(intervalIdStr);
+  const active = isRegisteredIntervalActive(state, delay, intervalId);
+
+  // remove the interval data
+  storage.setContextValue(registerIntervalIdKey(state, delay, intervalId), "");
+  return active;
 }

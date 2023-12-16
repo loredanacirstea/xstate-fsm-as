@@ -537,20 +537,11 @@ export class ContextParamRaw {
 export class TimerArgs {
   delay: string;
   state: string;
-  constructor(delay: string, state: string) {
+  intervalId: i64;
+  constructor(delay: string, state: string, intervalId: i64) {
     this.delay = delay;
     this.state = state;
-  }
-}
-
-// @ts-ignore
-@serializable
-export class EventualArgs {
-  intervalId: i32;
-  args: Uint8Array;
-  constructor(intervalId: i32, args: Uint8Array) {
     this.intervalId = intervalId;
-    this.args = args;
   }
 }
 

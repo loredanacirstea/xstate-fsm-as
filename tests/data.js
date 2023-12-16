@@ -618,17 +618,25 @@ export const RAFT_Full = {
         initial: "Follower",
         states: {
           Follower: {
-            entry: {
-              type: "setRandomElectionTimeout",
-              params: {
-                max: "300",
-                min: "150",
+            entry: [
+              {
+                type: "setRandomElectionTimeout",
+                params: {
+                  max: "300",
+                  min: "150",
+                },
               },
-            },
+              {
+                type: "cancelActiveIntervals",
+                params: {
+                  after: "electionTimeout",
+                },
+              },
+            ],
             after: {
               electionTimeout: {
                 target: "#RAFT-FULL-1.initialized.Candidate",
-                guard: "elapsedNotReset",
+                guard: "ifIntervalActive",
                 actions: [],
                 meta: {},
               },
@@ -677,11 +685,17 @@ export const RAFT_Full = {
               {
                 type: "sendVoteRequests",
               },
+              {
+                type: "cancelActiveIntervals",
+                params: {
+                  after: "electionTimeout",
+                },
+              },
             ],
             after: {
               electionTimeout: {
                 target: "#RAFT-FULL-1.initialized.Candidate",
-                guard: "elapsedNotReset",
+                guard: "ifIntervalActive",
                 actions: [],
                 meta: {},
               },

@@ -92,8 +92,8 @@ export function wasmx(storageMap, env, logType = LOG.error) {
         console.log('-host-log', item);
     }
 
-    function startInterval() {
-        console.log('-host-startInterval');
+    function startTimeout() {
+        console.log('-host-startTimeout');
     }
 
     function stopInterval() {
@@ -134,7 +134,7 @@ export function wasmx(storageMap, env, logType = LOG.error) {
         getBalance,
         log,
         grpcRequest,
-        startInterval,
+        startTimeout,
         stopInterval,
         sha256,
         setReturnData,
