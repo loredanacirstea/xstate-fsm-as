@@ -514,10 +514,10 @@ export const RAFTLogReplication = {
           Leader: {
             entry: [
               {
-                type: "reeinitialize_nextIndex",
+                type: "initializeNextIndex",
               },
               {
-                type: "reeinitialize_matchIndex",
+                type: "initializeMatchIndex",
               },
             ],
             initial: "active",
@@ -591,8 +591,8 @@ export const RAFT_Full = {
       log: "",
       nodeIPs: "[]",
       votedFor: "0",
-      nextIndex: "[1,1]",
-      matchIndex: "[0,0]",
+      nextIndex: "[]",
+      matchIndex: "[]",
       commitIndex: "0",
       currentTerm: "0",
       lastApplied: "0",
@@ -603,6 +603,8 @@ export const RAFT_Full = {
       max_block_gas: "20000000",
       electionTimeout: "0",
       heartbeatTimeout: 5000,
+      minElectionTime: "1500",
+      maxElectionTime: "3000",
     },
     id: "RAFT-FULL-1",
     initial: "uninitialized",
@@ -615,15 +617,28 @@ export const RAFT_Full = {
         },
       },
       initialized: {
-        initial: "Follower",
+        initial: "unstarted",
         states: {
+          unstarted: {
+            on: {
+              setupNode: {
+                target: "unstarted",
+                actions: {
+                  type: "setupNode",
+                },
+              },
+              start: {
+                target: "Follower",
+              },
+            },
+          },
           Follower: {
             entry: [
               {
                 type: "setRandomElectionTimeout",
                 params: {
-                  max: "300",
-                  min: "150",
+                  max: "$maxElectionTime",
+                  min: "$minElectionTime",
                 },
               },
               {
@@ -653,12 +668,6 @@ export const RAFT_Full = {
                   },
                 ],
               },
-              setupNode: {
-                target: "Follower",
-                actions: {
-                  type: "setupNode",
-                },
-              },
               receiveVoteRequest: {
                 target: "Follower",
                 actions: {
@@ -678,8 +687,8 @@ export const RAFT_Full = {
               {
                 type: "setRandomElectionTimeout",
                 params: {
-                  max: "300",
-                  min: "150",
+                  max: "$maxElectionTime",
+                  min: "$minElectionTime",
                 },
               },
               {

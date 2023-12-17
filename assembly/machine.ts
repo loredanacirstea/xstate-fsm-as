@@ -140,7 +140,7 @@ function executeStateActions(
     const action = state.actions[i];
     executeStateAction(service, state, event, action);
   }
-  console.debug("* executeStateActions after actions " + state.value)
+  console.debug("* executeStateActions after actions for: " + state.value)
 
   // timed actions from the new target state
   const newstateconfig = findStateInfo(service.machine.states, state.value);
@@ -176,7 +176,7 @@ function executeStateActions(
     const args = new TimerArgs(delayKeys[i], state.value, intervalId);
     const argsStr = JSON.stringify<TimerArgs>(args);
     wasmx.startTimeout(delay, String.UTF8.encode(argsStr));
-    console.debug("started timeout: " + intervalId.toString());
+    console.debug("started timeout - intervalId: " + intervalId.toString());
   }
 }
 
@@ -199,96 +199,108 @@ function executeStateAction(
         service.send(_event);
         return;
     }
+    const actionParams = action.params;
+    for (let i = 0; i < actionParams.length; i++) {
+      if (actionParams[i].value.length > 0 && actionParams[i].value.at(0) == "$") {
+        const value = storage.getContextValue(actionParams[i].value.slice(1));
+        actionParams[i].value = value;
+      }
+    }
+
     if (actionType === "mint") {
-        actionsErc20.mint(action.params, event);
+        actionsErc20.mint(actionParams, event);
         return;
     }
     if (actionType === "move") {
-        actionsErc20.move(action.params, event);
+        actionsErc20.move(actionParams, event);
         return;
     }
     if (actionType === "approve") {
-        actionsErc20.approve(action.params, event);
+        actionsErc20.approve(actionParams, event);
         return;
     }
     if (actionType === "sendRequest") {
-      sendRequest(action.params, event);
+      sendRequest(actionParams, event);
       return;
     }
     if (actionType === "logTransfer") {
-        actionsErc20.logTransfer(action.params, event);
+        actionsErc20.logTransfer(actionParams, event);
         return;
     }
     if (actionType === "increment") {
-      actionsCounter.increment(action.params);
+      actionsCounter.increment(actionParams);
       return;
     }
     if (actionType === "log") {
-        log(action.params);
+        log(actionParams);
         return
     }
     if (actionType === "setupNode") {
-      actionsRaft.setupNode(action.params, event);
+      actionsRaft.setupNode(actionParams, event);
       return;
     }
     if (actionType === "processAppendEntries") {
-      actionsRaft.processAppendEntries(action.params, event);
+      actionsRaft.processAppendEntries(actionParams, event);
       return;
     }
     if (actionType === "sendHeartbeatResponse") {
-      actionsRaft.sendHeartbeatResponse(action.params, event);
+      actionsRaft.sendHeartbeatResponse(actionParams, event);
       return;
     }
     if (actionType === "sendAppendEntries") {
-      actionsRaft.sendAppendEntries(action.params, event);
+      actionsRaft.sendAppendEntries(actionParams, event);
       return;
     }
     if (actionType === "sendNewTransactionResponse") {
-      actionsRaft.sendNewTransactionResponse(action.params, event);
+      actionsRaft.sendNewTransactionResponse(actionParams, event);
       return;
     }
     if (actionType === "appendLog") {
-      actionsRaft.appendLog(action.params, event);
+      actionsRaft.appendLog(actionParams, event);
       return;
     }
     if (actionType === "proposeBlock") {
-      actionsRaft.proposeBlock(action.params, event);
+      actionsRaft.proposeBlock(actionParams, event);
       return;
     }
     if (actionType === "commitBlocks") {
-      actionsRaft.commitBlocks(action.params, event);
+      actionsRaft.commitBlocks(actionParams, event);
       return;
     }
     if (actionType === "setRandomElectionTimeout") {
-      actionsRaft.setRandomElectionTimeout(action.params, event);
+      actionsRaft.setRandomElectionTimeout(actionParams, event);
       return;
     }
     if (actionType === "initializeNextIndex") {
-      actionsRaft.initializeNextIndex(action.params, event);
+      actionsRaft.initializeNextIndex(actionParams, event);
       return;
     }
     if (actionType === "initializeMatchIndex") {
-      actionsRaft.initializeMatchIndex(action.params, event);
+      actionsRaft.initializeMatchIndex(actionParams, event);
       return;
     }
     if (actionType === "incrementCurrentTerm") {
-      actionsRaft.incrementCurrentTerm(action.params, event);
+      actionsRaft.incrementCurrentTerm(actionParams, event);
       return;
     }
     if (actionType === "vote") {
-      actionsRaft.vote(action.params, event);
+      actionsRaft.vote(actionParams, event);
       return;
     }
-    if (actionType === "sendRequestVote") {
-      actionsRaft.sendVoteRequests(action.params, event);
+    if (actionType === "sendVoteRequests") {
+      actionsRaft.sendVoteRequests(actionParams, event);
+      return;
+    }
+    if (actionType === "selfVote") {
+      actionsRaft.selfVote(actionParams, event);
       return;
     }
     if (actionType === "noaction") {
-      noaction(action.params, event);
+      noaction(actionParams, event);
       return;
     }
     if (actionType === "cancelActiveIntervals") {
-      cancelActiveIntervals(state, action.params, event);
+      cancelActiveIntervals(state, actionParams, event);
       return;
     }
     // If action is not a local action, then it is an external action
@@ -567,8 +579,6 @@ export class Machine implements StateMachine.Machine {
             throw new Error(message);
         }
 
-      // console.log("----transition-nextStateConfig--" + nextStateConfig.on.keys().join(","))
-
       if (guard && !executeGuard(guard, eventObject)) {
         const message = "cannot execute transition; guard: " + guard;
         wasmx.revert(String.UTF8.encode(message));
@@ -576,7 +586,8 @@ export class Machine implements StateMachine.Machine {
     }
 
 
-      if (cond(eventObject)) {
+      // if (cond(eventObject)) {
+      if (true) {
         let allActions: ActionObject[] = [];
 
         if (!isTargetless) {

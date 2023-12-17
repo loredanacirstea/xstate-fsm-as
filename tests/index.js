@@ -339,10 +339,26 @@ async function runTests() {
 
     // [temp] setup values
     // {"chain_id":"mythos_7000-14","consensus_params":{"block":{"max_bytes":22020096,"max_gas":-1},"evidence":{"max_age_num_blocks":100000,"max_age_duration":172800000000000,"max_bytes":1048576},"validator":{"pub_key_types":["ed25519"]},"version":{"app":0},"abci":{"vote_extensions_enable_height":0}},"validators":[{"address":"84E28BE8F898C195318E5A84D31DDA35979E1C0A","pub_key":"8hDjfBjsW8wy7gc3VSRfOK2uhNYcibHt7GnB7kjw++c=","voting_power":100000000000000,"proposer_priority":0}],"app_hash":"47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=","last_results_hash":"47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=","current_validator":"84E28BE8F898C195318E5A84D31DDA35979E1C0A","version":{"consensus":{"block":0,"app":0},"software":""}}
-    const initChainSetup2 = "eyJjaGFpbl9pZCI6Im15dGhvc183MDAwLTE0IiwiY29uc2Vuc3VzX3BhcmFtcyI6eyJibG9jayI6eyJtYXhfYnl0ZXMiOjIyMDIwMDk2LCJtYXhfZ2FzIjotMX0sImV2aWRlbmNlIjp7Im1heF9hZ2VfbnVtX2Jsb2NrcyI6MTAwMDAwLCJtYXhfYWdlX2R1cmF0aW9uIjoxNzI4MDAwMDAwMDAwMDAsIm1heF9ieXRlcyI6MTA0ODU3Nn0sInZhbGlkYXRvciI6eyJwdWJfa2V5X3R5cGVzIjpbImVkMjU1MTkiXX0sInZlcnNpb24iOnsiYXBwIjowfSwiYWJjaSI6eyJ2b3RlX2V4dGVuc2lvbnNfZW5hYmxlX2hlaWdodCI6MH19LCJ2YWxpZGF0b3JzIjpbeyJhZGRyZXNzIjoiODRFMjhCRThGODk4QzE5NTMxOEU1QTg0RDMxRERBMzU5NzlFMUMwQSIsInB1Yl9rZXkiOiI4aERqZkJqc1c4d3k3Z2MzVlNSZk9LMnVoTlljaWJIdDdHbkI3a2p3KytjPSIsInZvdGluZ19wb3dlciI6MTAwMDAwMDAwMDAwMDAwLCJwcm9wb3Nlcl9wcmlvcml0eSI6MH1dLCJhcHBfaGFzaCI6IjQ3REVRcGo4SEJTYSsvVEltVys1SkNldVFlUmttNU5NcEpXWkczaFN1RlU9IiwibGFzdF9yZXN1bHRzX2hhc2giOiI0N0RFUXBqOEhCU2ErL1RJbVcrNUpDZXVRZVJrbTVOTXBKV1pHM2hTdUZVPSIsImN1cnJlbnRfdmFsaWRhdG9yIjoiODRFMjhCRThGODk4QzE5NTMxOEU1QTg0RDMxRERBMzU5NzlFMUMwQSIsInZlcnNpb24iOnsiY29uc2Vuc3VzIjp7ImJsb2NrIjowLCJhcHAiOjB9LCJzb2Z0d2FyZSI6IiJ9fQ=="
+
+    const initChainSetup2 = "eyJjaGFpbl9pZCI6Im15dGhvc183MDAwLTE0IiwiY29uc2Vuc3VzX3BhcmFtcyI6eyJibG9jayI6eyJtYXhfYnl0ZXMiOjIyMDIwMDk2LCJtYXhfZ2FzIjotMX0sImV2aWRlbmNlIjp7Im1heF9hZ2VfbnVtX2Jsb2NrcyI6MTAwMDAwLCJtYXhfYWdlX2R1cmF0aW9uIjoxNzI4MDAwMDAwMDAwMDAsIm1heF9ieXRlcyI6MTA0ODU3Nn0sInZhbGlkYXRvciI6eyJwdWJfa2V5X3R5cGVzIjpbImVkMjU1MTkiXX0sInZlcnNpb24iOnsiYXBwIjowfSwiYWJjaSI6eyJ2b3RlX2V4dGVuc2lvbnNfZW5hYmxlX2hlaWdodCI6MH19LCJ2YWxpZGF0b3JzIjpbeyJhZGRyZXNzIjoiM0M2MUFCNDI5NkEyMUM1REZFRDRFNURBQTM0MTkxMDM3OUYxODUxNiIsInB1Yl9rZXkiOiJJKzNDZ05RZTNvQzE0RGd2TkdNbGcrR1Z4L3lhMWQ4dEhnTlBEUTQxRCtBPSIsInZvdGluZ19wb3dlciI6MTAwMDAwMDAwMDAwMDAwLCJwcm9wb3Nlcl9wcmlvcml0eSI6MH0seyJhZGRyZXNzIjoiMjZDQTYxQjM4MEMyOTc5M0NGQjNCQTFFN0I3ODg3NDMyMjJCRUY1OSIsInB1Yl9rZXkiOiIyQzd5RzJvTkdHM3liMTQzYXpmNGRodWJGTTBGYXhURjlpTElDNXdVYmZ3PSIsInZvdGluZ19wb3dlciI6MTAwMDAwMDAwMDAwMDAwLCJwcm9wb3Nlcl9wcmlvcml0eSI6MH1dLCJhcHBfaGFzaCI6IjQ3REVRcGo4SEJTYSsvVEltVys1SkNldVFlUmttNU5NcEpXWkczaFN1RlU9IiwibGFzdF9yZXN1bHRzX2hhc2giOiI0N0RFUXBqOEhCU2ErL1RJbVcrNUpDZXVRZVJrbTVOTXBKV1pHM2hTdUZVPSIsImN1cnJlbnRfdmFsaWRhdG9yIjoiM0M2MUFCNDI5NkEyMUM1REZFRDRFNURBQTM0MTkxMDM3OUYxODUxNiIsInZlcnNpb24iOnsiY29uc2Vuc3VzIjp7ImJsb2NrIjowLCJhcHAiOjB9LCJzb2Z0d2FyZSI6IiJ9fQ=="
     await runFnOwner("run", machine, {event: {type: "setupNode", params: [{key: "currentNodeId", value: "0"},{key: "nodeIPs", value: "[\"0.0.0.0:8090\"]"},{key: "initChainSetup", value: initChainSetup2}]}});
 
-    // TODO trigger Candidate & Leader
+    currentState = await runFn("getCurrentState", machine, {});
+    console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
+    assert.strictEqual(decodeFromUtf8Array(currentState), "#RAFT-FULL-1.initialized.unstarted");
+
+    await runFn("run", machine, {event: {type: "start", params: []}});
+
+    currentState = await runFn("getCurrentState", machine, {});
+    console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
+    assert.strictEqual(decodeFromUtf8Array(currentState), "#RAFT-FULL-1.initialized.Follower");
+
+    let bz = encodeToUtf8Array(JSON.stringify({"delay":"electionTimeout","state":"#RAFT-FULL-1.initialized.Follower","intervalId":"1"}))
+    await runFnOwner("eventual", machine, bz, "eventual");
+
+    currentState = await runFn("getCurrentState", machine, {});
+    console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
+    assert.strictEqual(decodeFromUtf8Array(currentState), "#RAFT-FULL-1.initialized.Candidate");
 }
 
 runTests();

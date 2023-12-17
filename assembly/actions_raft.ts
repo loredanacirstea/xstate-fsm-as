@@ -212,10 +212,19 @@ export function isVotedLeader(
 
 function sendVoteRequest(nodeId: i32, nodeIp: string, request: VoteRequest, termId: i32): void {
     const datastr = JSON.stringify<VoteRequest>(request);
-    const dataBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(datastr)));
+
+    const msgstr = `{"run":{"event":{"type":"receiveVoteRequest","params":[{"key":"entry","value":"${datastr}"}]}}}`
+
+    const dataBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(msgstr)));
     const contract = wasmx.getAddress();
+    consensuswrap.LoggerDebug("sending vote request", ["nodeId", nodeId.toString(), "nodeIp", nodeIp, "termId", termId.toString(), "data", datastr])
     const response = wasmxwrap.grpcRequest(nodeIp, Uint8Array.wrap(contract), dataBase64);
-    const resp = JSON.parse<VoteResponse>(response);
+    consensuswrap.LoggerDebug("vote request response", ["nodeId", nodeId.toString(), "nodeIp", nodeIp, "termId", termId.toString(), "data", response.data, "error", response.error])
+    if (response.error.length > 0) {
+        return
+    }
+
+    const resp = JSON.parse<VoteResponse>(response.data);
     // if vote granted, add to the votes and check that we have majority
     if (resp.voteGranted) {
         const voteArray = getVoteIndexArray();
@@ -485,12 +494,18 @@ export function sendAppendEntry(
         getCommitIndex(),
     )
     const datastr = JSON.stringify<AppendEntry>(data);
+
+    const msgstr = `{"run":{"event":{"type":"receiveHeartbeat","params":[{"key":"entry","value":"${datastr}"}]}}}`
+
     consensuswrap.LoggerDebug("diseminate append entry...", ["nodeId", nodeId.toString(), "receiver", nodeIp, "count", entries.length.toString(), "from", nextIndex.toString(), "to", lastIndex.toString()])
-    const dataBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(datastr)));
+    const dataBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(msgstr)));
     // we send the request to the same contract
     const contract = wasmx.getAddress();
     const response = wasmxwrap.grpcRequest(nodeIp, Uint8Array.wrap(contract), dataBase64);
-    const resp = JSON.parse<AppendEntryResponse>(response);
+    if (response.error.length > 0) {
+        return
+    }
+    const resp = JSON.parse<AppendEntryResponse>(response.data);
     // TODO something with resp.term
     if (resp.success) {
         nextIndexPerNode[nodeId] = nextIndex + entries.length;
@@ -1190,5 +1205,7 @@ function getHeaderHash(header: typestnd.Header): string {
 }
 
 function getRandomInRange(min: i64, max: i64): i64 {
-    return i64(Math.floor(Math.random() * f64((max - min + 1)))) + min;
+    const rand = Math.random()
+    const numb = Math.floor(rand * f64((max - min + 1)))
+    return i64(numb) + min;
 }

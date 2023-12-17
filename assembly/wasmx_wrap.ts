@@ -120,14 +120,26 @@ export function log_fsm(
     wasmx.log(String.UTF8.encode(logstr));
 }
 
-export function grpcRequest(ip: string, contract: Uint8Array, data: string): string {
+// @ts-ignore
+@serializable
+class GrpcResponse {
+    data: string // base64
+    error: string
+    constructor(data: string, error: string) {
+        this.data = data;
+        this.error = error;
+    }
+}
+
+export function grpcRequest(ip: string, contract: Uint8Array, data: string): GrpcResponse {
     const contractAddress = encodeBase64(contract);
     const reqstr = `{"ip_address":"${ip}","contract":"${contractAddress}","data":"${data}"}`
     console.debug("grpc request: " + reqstr);
     const req = String.UTF8.encode(reqstr);
     const result = wasmx.grpcRequest(req);
-    const response = String.UTF8.decode(result);
-    console.debug("grpc response: " + response);
+    console.debug("grpc response: " + String.UTF8.decode(result));
+    const response = JSON.parse<GrpcResponse>(String.UTF8.decode(result));
+    response.data = String.UTF8.decode(decodeBase64(response.data).buffer);
     return response;
 }
 

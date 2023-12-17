@@ -52,7 +52,8 @@ export function wasmx(storageMap, env, logType = LOG.error) {
         if (logType > 1) {
             console.log('-host-grpcRequest', [...new Uint8Array(keybuf)]);
         }
-        return new Uint8Array(0);
+        const resp = {data: "", error: ""};
+        return encodeToUtf8Array(JSON.stringify(resp));
     }
 
     function getCallData() {

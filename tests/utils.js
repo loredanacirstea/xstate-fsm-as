@@ -49,8 +49,8 @@ function parseMachineStates(configStates = {}, statePath) {
             name: stateName,
             after: stateafter,
             on: stateon,
-            exit: entryActions,
-            entry: exitActions,
+            entry: entryActions,
+            exit: exitActions,
             initial: initialState,
             states: state.states ? parseMachineStates(state.states, statePath + "." + stateName) : [],
         }
