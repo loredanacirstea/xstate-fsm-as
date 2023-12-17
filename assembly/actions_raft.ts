@@ -181,8 +181,8 @@ export function sendVoteRequests(
 ): void {
     const termId = getTermId();
     const candidateId = getCurrentNodeId();
+    const lastLogIndex = getLogCount();
     const lastEntry = getLastLog();
-    const lastLogIndex = lastEntry.index;
     const lastLogTerm = lastEntry.termId;
 
     // iterate through the other nodes and send a VoteRequest
@@ -213,7 +213,7 @@ export function isVotedLeader(
 function sendVoteRequest(nodeId: i32, nodeIp: string, request: VoteRequest, termId: i32): void {
     const datastr = JSON.stringify<VoteRequest>(request);
 
-    const msgstr = `{"run":{"event":{"type":"receiveVoteRequest","params":[{"key":"entry","value":"${datastr}"}]}}}`
+    const msgstr = `{"run":{"event":{"type":"receiveVoteRequest","params":[{"key":"termId","value":"${request.termId.toString()}"},{"key":"candidateId","value":"${request.candidateId.toString()}"},{"key":"lastLogIndex","value":"${request.lastLogIndex.toString()}"},{"key":"lastLogTerm","value":"${request.lastLogTerm.toString()}"}]}}}`
 
     const dataBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(msgstr)));
     const contract = wasmx.getAddress();
@@ -495,7 +495,7 @@ export function sendAppendEntry(
     )
     const datastr = JSON.stringify<AppendEntry>(data);
 
-    const msgstr = `{"run":{"event":{"type":"receiveHeartbeat","params":[{"key":"entry","value":"${datastr}"}]}}}`
+    const msgstr = `{"run":{"event":{"type":"receiveHeartbeat","params":[{"key":"termId","value":"${data.termId.toString()}"},{"key":"leaderId","value":"${data.leaderId.toString()}"},{"key":"prevLogIndex","value":"${data.prevLogIndex.toString()}"},{"key":"prevLogTerm","value":"${data.prevLogTerm.toString()}"},{"key":"entries","value":"${JSON.stringify<LogEntry[]>(data.entries)}"},{"key":"leaderCommit","value":"${data.leaderCommit.toString()}"}]}}}`
 
     consensuswrap.LoggerDebug("diseminate append entry...", ["nodeId", nodeId.toString(), "receiver", nodeIp, "count", entries.length.toString(), "from", nextIndex.toString(), "to", lastIndex.toString()])
     const dataBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(msgstr)));
@@ -897,7 +897,7 @@ function setTermId(value: i32): void {
 // }
 
 function hasVotedFor(): boolean {
-    return getVotedForInternal() == 0;
+    return getVotedForInternal() > 0;
 }
 
 function getVotedForInternal(): i32 {

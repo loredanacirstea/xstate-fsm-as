@@ -29,6 +29,9 @@ import * as storage from './storage';
 import * as actionsCounter from "./actions_counter";
 import * as actionsErc20 from "./actions_erc20";
 import * as actionsRaft from "./actions_raft";
+import { LoggerDebug } from "./consensus_wrap";
+
+const REVERT_IF_UNEXPECTED_STATE = false;
 
 const INIT_EVENT = new InitEvent();
 const ASSIGN_ACTION: AssignAction = 'xstate.assign';
@@ -77,7 +80,6 @@ function handleActions(
 
   for (let i = 0; i < actions.length; i++) {
     const action = actions[i];
-    console.debug("* execute action: " + action.type);
     if (action.type === ASSIGN_ACTION) {
       assigned = true;
 
@@ -170,8 +172,8 @@ function executeStateActions(
     } else {
       delay = u64(delayKey);
     }
-    const intervalId = getIntervalId();
-    setIntervalId(intervalId + 1);
+    const intervalId = getLastIntervalId() + 1;
+    setLastIntervalId(intervalId);
     registerIntervalId(state.value, delayKeys[i], intervalId);
     const args = new TimerArgs(delayKeys[i], state.value, intervalId);
     const argsStr = JSON.stringify<TimerArgs>(args);
@@ -516,8 +518,13 @@ export class Machine implements StateMachine.Machine {
 
         if (transition == null) {
           const message = `cannot apply "${eventObject.type}" event in current "${value}" state`;
-          wasmx.revert(String.UTF8.encode(message));
-          throw new Error(message);
+          if (REVERT_IF_UNEXPECTED_STATE) {
+            wasmx.revert(String.UTF8.encode(message));
+            throw new Error(message);
+          } else {
+            LoggerDebug(message, []);
+          }
+
         }
       }
     }
@@ -871,22 +878,22 @@ export function eventual(config: MachineExternal, args: TimerArgs): void {
   // TODO listeners?
 }
 
-function getIntervalId(): i64 {
+function getLastIntervalId(): i64 {
   const value = storage.getContextValue(INTERVAL_ID_KEY);
   if (value === "") return i64(0);
   return parseInt32(value);
 }
 
-function setIntervalId(value: i64): void {
+function setLastIntervalId(value: i64): void {
   storage.setContextValue(INTERVAL_ID_KEY, value.toString());
 }
 
 function registerIntervalIdKey(state: string, delay: string, intervalId: i64): string {
-  return `${state}_${delay}_${intervalId.toString()}`
+  return `${INTERVAL_ID_KEY}_${state}_${delay}_${intervalId.toString()}`
 }
 
 function registerLastIntervalIdKey(state: string, delay: string): string {
-  return `${state}_${delay}}`
+  return `${INTERVAL_ID_KEY}_${state}_${delay}}`
 }
 
 function registerIntervalId(state: string, delay: string, intervalId: i64): void {
@@ -894,7 +901,7 @@ function registerIntervalId(state: string, delay: string, intervalId: i64): void
   storage.setContextValue(registerIntervalIdKey(state, delay, intervalId), "1");
 }
 
-function getLastIntervalId(state: string, delay: string): i64 {
+function getLastIntervalIdForState(state: string, delay: string): i64 {
   const lastIntervalId = storage.getContextValue(registerLastIntervalIdKey(state, delay))
   if (lastIntervalId == "") {
     return 0;
@@ -909,7 +916,7 @@ function isRegisteredIntervalActive(state: string, delay: string, intervalId: i6
 }
 
 function cancelIntervals(state: string, delay: string): void {
-  const lastIntervalId = getLastIntervalId(state, delay)
+  const lastIntervalId = getLastIntervalIdForState(state, delay)
   tryCancelIntervals(state, delay, lastIntervalId);
 }
 
@@ -917,7 +924,7 @@ function tryCancelIntervals(state: string, delay: string, intervalId: i64): void
   const active = isRegisteredIntervalActive(state, delay, intervalId);
   // remove the interval data
   storage.setContextValue(registerIntervalIdKey(state, delay, intervalId), "");
-  if (active) {
+  if (active && intervalId > 0) {
     tryCancelIntervals(state, delay, intervalId - 1);
   }
 }
