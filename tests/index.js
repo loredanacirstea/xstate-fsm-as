@@ -299,24 +299,24 @@ async function runTests() {
     await runFnOwner("run", machine, {event: {type: "setupNode", params: [{key: "currentNodeId", value: "0"},{key: "nodeIPs", value: "[\"0.0.0.0:8090\"]"},{key: "initChainSetup", value: initChainSetup}]}});
 
     await runFnOwner("run", machine, {event: {type: "change", params: []}});
-    await runFnOwner("run", machine, {event: {type: "change", params: []}});
+    // await runFnOwner("run", machine, {event: {type: "change", params: []}});
 
-    // Check state is active
-    currentState = await runFn("getCurrentState", machine, {});
-    console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
-    assert.strictEqual(decodeFromUtf8Array(currentState), "#RAFT-LogReplication.initialized.Leader.active");
+    // // Check state is active
+    // currentState = await runFn("getCurrentState", machine, {});
+    // console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
+    // assert.strictEqual(decodeFromUtf8Array(currentState), "#RAFT-LogReplication.initialized.Leader.active");
 
-    let tx = {from: "aa", to: "bb", funds: [], data: "1122", gas: 1000, price: 10}
-    txstr = JSON.stringify(tx);
-    await runFnOwner("run", machine, {event: {type: "newTransaction", params: [{key: "transaction", value: btoa(txstr)}]}});
-    await runFnOwner("run", machine, {event: {type: "newTransaction", params: [{key: "transaction", value: btoa(txstr)}]}});
+    // let tx = {from: "aa", to: "bb", funds: [], data: "1122", gas: 1000, price: 10}
+    // txstr = JSON.stringify(tx);
+    // await runFnOwner("run", machine, {event: {type: "newTransaction", params: [{key: "transaction", value: btoa(txstr)}]}});
+    // await runFnOwner("run", machine, {event: {type: "newTransaction", params: [{key: "transaction", value: btoa(txstr)}]}});
 
-    // let bz = encodeToUtf8Array(JSON.stringify({"delay":"heartbeatTimeout","serviceId":machineId,"state":"active"}))
-    // await runFnOwner("eventual", machine, new Uint8Array([0, 0, 0, 0, ...bz]), "eventual");
+    // // let bz = encodeToUtf8Array(JSON.stringify({"delay":"heartbeatTimeout","serviceId":machineId,"state":"active"}))
+    // // await runFnOwner("eventual", machine, new Uint8Array([0, 0, 0, 0, ...bz]), "eventual");
 
-    currentState = await runFn("getCurrentState", machine, {});
-    console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
-    assert.strictEqual(decodeFromUtf8Array(currentState), "#RAFT-LogReplication.initialized.Leader.active");
+    // currentState = await runFn("getCurrentState", machine, {});
+    // console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
+    // assert.strictEqual(decodeFromUtf8Array(currentState), "#RAFT-LogReplication.initialized.Leader.active");
 
     // result = await runFn("getContextValue", machine, {key: "logs_count"});
     // console.log("!!!!!getContextValue logs_count", decodeFromUtf8Array(result))

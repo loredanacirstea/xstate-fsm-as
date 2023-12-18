@@ -51,7 +51,7 @@ export function initializeNextIndex(
     params: ActionParam[],
     event: EventObject,
 ): void {
-    const lastIndex = getLogCount();
+    const lastIndex = getLastLogIndex();
     const nextIndex = lastIndex + 1;
     const nextIndexes = getNextIndexArray();
     for (let i = 0; i < nextIndexes.length; i++) {
@@ -181,7 +181,7 @@ export function sendVoteRequests(
 ): void {
     const termId = getTermId();
     const candidateId = getCurrentNodeId();
-    const lastLogIndex = getLogCount();
+    const lastLogIndex = getLastLogIndex();
     const lastEntry = getLastLog();
     const lastLogTerm = lastEntry.termId;
 
@@ -260,7 +260,7 @@ function voteInternal(termId: i32, candidateId: i32, lastLogIndex: i64, lastLogT
             response = new VoteResponse(mytermId, false);
         } else {
             // candidate’s log is at least as up-to-date as receiver’s log
-            const lastIndex = getLogCount();
+            const lastIndex = getLastLogIndex();
             if (lastLogIndex < lastIndex) {
                 consensuswrap.LoggerDebug("candidate is not up-to-date", ["candidateLastIndex", lastLogIndex.toString(), "ourLastIndex", lastIndex.toString(), "candidateId", candidateId.toString()])
                 response = new VoteResponse(mytermId, false);
@@ -309,6 +309,9 @@ export function setupNode(
     // TODO ID@host:ip
     // 6efc12ab37fc0e096d8618872f6930df53972879@0.0.0.0:26757
     storage.setContextValue(NODE_IPS, nodeIPs);
+
+    setCommitIndex(LOG_START);
+    setLastApplied(LOG_START);
 
     const datajson = String.UTF8.decode(decodeBase64(initChainSetup).buffer);
     consensuswrap.LoggerDebug("setupNode", ["currentNodeId", currentNodeId, "nodeIPs", nodeIPs, "initChainSetup", datajson])
@@ -380,6 +383,7 @@ export function processAppendEntries(
     for (let i = lastCommitIndex + 1; i <= entry.leaderCommit; i++) {
         startBlockFinalizationFollower(i);
         setCommitIndex(i);
+        setLastApplied(i);
     }
 }
 
@@ -430,15 +434,15 @@ export function commitBlocks(
 
 // this gets called each reentry in Leader.active state
 function checkCommits(): void {
-    const lastCommitIndex = getLastApplied();
+    const lastCommitIndex = getCommitIndex();
     // all commited + uncommited logs
-    const lastLogIndex = getLogCount();
+    const lastLogIndex = getLastLogIndex();
     const currentNodeId = getCurrentNodeId();
     const nextIndexPerNode = getNextIndexArray();
     const len = nextIndexPerNode.length;
     let nextCommit = lastCommitIndex + 1;
 
-    consensuswrap.LoggerDebug("committing diseminated blocks...", ["lastApplied", lastCommitIndex.toString(), "lastSaved", lastLogIndex.toString(), "blocksToCommit", (lastLogIndex < nextCommit).toString()])
+    consensuswrap.LoggerDebug("committing diseminated blocks...", ["lastCommitIndex", lastCommitIndex.toString(), "lastSaved", lastLogIndex.toString(), "blocksToCommit", (lastLogIndex >= nextCommit).toString()])
 
     if (lastLogIndex < nextCommit) {
         return;
@@ -461,6 +465,7 @@ function checkCommits(): void {
         // We commit the state
         startBlockFinalizationLeader(nextCommit);
         // update last commited!
+        setCommitIndex(nextCommit);
         setLastApplied(nextCommit);
     }
 }
@@ -473,7 +478,7 @@ export function sendAppendEntry(
 ): void {
     const nextIndexPerNode = getNextIndexArray();
     const nextIndex = nextIndexPerNode.at(nodeId);
-    const lastIndex = getLogCount();
+    const lastIndex = getLastLogIndex();
     const entries: Array<LogEntry> = [];
     for (let i = nextIndex; i <= lastIndex; i++) {
         const entry = getLogEntry(i);
@@ -487,23 +492,27 @@ export function sendAppendEntry(
     } else {
         previousEntry = new LogEntry(0, 0, 0, "", "", "", "");
     }
+    const lastCommitIndex = getCommitIndex();
     const data = new AppendEntry(
         getTermId(),
         getCurrentNodeId(),
         nextIndex - 1,
         previousEntry.termId,
         entries,
-        getCommitIndex(),
+        lastCommitIndex,
     )
     const datastr = JSON.stringify<AppendEntry>(data);
 
-    const msgstr = `{"run":{"event":{"type":"receiveHeartbeat","params":[{"key":"termId","value":"${data.termId.toString()}"},{"key":"leaderId","value":"${data.leaderId.toString()}"},{"key":"prevLogIndex","value":"${data.prevLogIndex.toString()}"},{"key":"prevLogTerm","value":"${data.prevLogTerm.toString()}"},{"key":"entries","value":"${JSON.stringify<LogEntry[]>(data.entries)}"},{"key":"leaderCommit","value":"${data.leaderCommit.toString()}"}]}}}`
+    // const msgstr = `{"run":{"event":{"type":"receiveHeartbeat","params":[{"key":"termId","value":"${data.termId.toString()}"},{"key":"leaderId","value":"${data.leaderId.toString()}"},{"key":"prevLogIndex","value":"${data.prevLogIndex.toString()}"},{"key":"prevLogTerm","value":"${data.prevLogTerm.toString()}"},{"key":"entries","value":"${JSON.stringify<LogEntry[]>(data.entries)}"},{"key":"leaderCommit","value":"${data.leaderCommit.toString()}"}]}}}`
+
+    const dataBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(datastr)));
+    const msgstr = `{"run":{"event":{"type":"receiveHeartbeat","params":[{"key": "entry","value":"${dataBase64}"}]}}}`
 
     consensuswrap.LoggerDebug("diseminate append entry...", ["nodeId", nodeId.toString(), "receiver", nodeIp, "count", entries.length.toString(), "from", nextIndex.toString(), "to", lastIndex.toString()])
-    const dataBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(msgstr)));
+    const msgBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(msgstr)));
     // we send the request to the same contract
     const contract = wasmx.getAddress();
-    const response = wasmxwrap.grpcRequest(nodeIp, Uint8Array.wrap(contract), dataBase64);
+    const response = wasmxwrap.grpcRequest(nodeIp, Uint8Array.wrap(contract), msgBase64);
     if (response.error.length > 0) {
         return
     }
@@ -570,7 +579,7 @@ export function proposeBlock(
 }
 
 function getLastLog(): LogEntry {
-    const index = getLogCount();
+    const index = getLastLogIndex();
     const entry = getLogEntry(index);
     return JSON.parse<LogEntry>(entry);
 }
@@ -610,7 +619,7 @@ export function appendLogInternal(
 
 function startBlockProposal(txs: string[], cummulatedGas: i64, maxDataBytes: i64): void {
     // PrepareProposal TODO finish
-    const height = getLogCount() + 1;
+    const height = getLastLogIndex() + 1;
     consensuswrap.LoggerDebug("start block proposal", ["height", height.toString()])
 
     const currentState = getCurrentState();
@@ -785,7 +794,7 @@ function appendLogInternalVerified(processReq: typestnd.RequestProcessProposal, 
 export function appendLogEntry(
     entry: LogEntry,
 ): void {
-    const index = getLogCount() + 1;
+    const index = getLastLogIndex() + 1;
     // TODO rollback entries in case of a network split (e.g. entries with higher termId than we have have priority); they must be uncommited
     // and just return if already saved
     if (index > entry.index) {
@@ -795,7 +804,7 @@ export function appendLogEntry(
     if (index !== entry.index) {
         revert(`mismatched index while appending log entry: expected ${index}, found ${entry.index}`);
     }
-    setLogCount(index);
+    setLastLogIndex(index);
     setLogEntryObj(entry);
 }
 
@@ -815,8 +824,8 @@ export function setLogEntry(
     storage.setContextValue(key, entry);
 }
 
-export function getLogCount(): i64 {
-    const key = getLogCountKey();
+export function getLastLogIndex(): i64 {
+    const key = getLastLogIndexKey();
     const valuestr = storage.getContextValue(key);
     if (valuestr != "") {
         const value = parseInt(valuestr);
@@ -825,10 +834,10 @@ export function getLogCount(): i64 {
     return i64(LOG_START);
 }
 
-export function setLogCount(
+export function setLastLogIndex(
     value: i64,
 ): void {
-    const key = getLogCountKey();
+    const key = getLastLogIndexKey();
     consensuswrap.LoggerDebug("setting entry count", ["height", value.toString()])
     storage.setContextValue(key, value.toString());
 }
@@ -837,8 +846,8 @@ export function getLogEntryKey(index: i64): string {
     return "logs_" + index.toString();
 }
 
-export function getLogCountKey(): string {
-    return "logs_count";
+export function getLastLogIndexKey(): string {
+    return "logs_last_index";
 }
 
 /// Context values
