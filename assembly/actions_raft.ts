@@ -221,7 +221,7 @@ function sendVoteRequest(nodeId: i32, nodeIp: string, request: VoteRequest, term
     consensuswrap.LoggerDebug("sending vote request", ["nodeId", nodeId.toString(), "nodeIp", nodeIp, "termId", termId.toString(), "data", datastr])
     const response = wasmxwrap.grpcRequest(nodeIp, Uint8Array.wrap(contract), dataBase64);
     consensuswrap.LoggerDebug("vote request response", ["nodeId", nodeId.toString(), "nodeIp", nodeIp, "termId", termId.toString(), "data", response.data, "error", response.error])
-    if (response.error.length > 0) {
+    if (response.error.length > 0 || response.data.length == 0) {
         return
     }
 
@@ -694,7 +694,9 @@ function startBlockFinalizationLeader(index: i64): void {
 
     if (currentTerm == entryobj.termId) {
         return startBlockFinalizationInternal(entryobj);
-    } else consensuswrap.LoggerError("entry has current term mismatch", ["nodeType", "Leader", "currentTerm", currentTerm.toString(), "entryTermId", entryobj.termId.toString()])
+    } else {
+        consensuswrap.LoggerError("entry has current term mismatch", ["nodeType", "Leader", "currentTerm", currentTerm.toString(), "entryTermId", entryobj.termId.toString()])
+    }
 }
 
 function startBlockFinalizationFollower(index: i64): void {

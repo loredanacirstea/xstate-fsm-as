@@ -598,10 +598,13 @@ export class Machine implements StateMachine.Machine {
 
       if (guard && !executeGuard(guard, eventObject)) {
         const message = "cannot execute transition; guard: " + guard;
-        wasmx.revert(String.UTF8.encode(message));
-        throw new Error(message);
+        if (REVERT_IF_UNEXPECTED_STATE) {
+          wasmx.revert(String.UTF8.encode(message));
+          throw new Error(message);
+        } else {
+          LoggerDebug(message, []);
+        }
     }
-
 
       // if (cond(eventObject)) {
       if (true) {
