@@ -150,13 +150,13 @@ function executeStateActions(
     return revert("could not find state config for " + state.value);
   }
 
-  const alwaysTransition = newstateconfig.always;
-  if (alwaysTransition != null) {
-    const emptyEvent = new EventClass("", [])
-    const newstate = service.machine.applyTransition(state, alwaysTransition, emptyEvent)
-    // Set new state before executing actions
-    storage.setCurrentState(newstate);
-    executeStateActions(service, newstate, emptyEvent);
+  if (newstateconfig.always.length > 0) {
+    const newstate = applyAlwaysIfElse(service, state, newstateconfig.always)
+    if (newstate != null) {
+      // Set new state before executing actions
+      storage.setCurrentState(newstate);
+      executeStateActions(service, newstate, new EventClass("", []));
+    }
   }
 
   const afterTimers = newstateconfig.after;
@@ -190,6 +190,20 @@ function executeStateActions(
     wasmx.startTimeout(delay, String.UTF8.encode(argsStr));
     console.debug("started timeout - intervalId: " + intervalId.toString());
   }
+}
+
+function applyAlwaysIfElse(
+  service: Service,
+  state: State,
+  alwaysTransitions: Transition[],
+): State | null {
+  if (alwaysTransitions.length == 0) return null;
+  const emptyEvent = new EventClass("", [])
+  console.debug(`apply if/else - ${alwaysTransitions[0].target}`);
+  const newstate = service.machine.applyTransition(state, alwaysTransitions[0], emptyEvent);
+  if (newstate != null) return newstate;
+  alwaysTransitions.shift();
+  return applyAlwaysIfElse(service, state, alwaysTransitions);
 }
 
 function executeStateAction(
@@ -426,15 +440,18 @@ export class Service implements StateMachine.Service {
       return;
     }
     let state = storage.getCurrentState();
-    state = this.machine.transition(state, event);
-    console.debug("* posttransition state: " + state.value);
+    const newstate = this.machine.transition(state, event);
+    if (newstate == null) {
+      return;
+    }
+    console.debug("* posttransition state: " + newstate.value);
     // Set new state before executing actions
-    storage.setCurrentState(state);
-    executeStateActions(this, state, event);
+    storage.setCurrentState(newstate);
+    executeStateActions(this, newstate, event);
 
     const listeners = this.listeners.values();
     for (let i = 0; i < listeners.length; i++) {
-      listeners[i](state);
+      listeners[i](newstate);
     }
   }
 
@@ -508,7 +525,7 @@ export class Machine implements StateMachine.Machine {
   transition(
     state: State,
     eventObject: EventObject
-  ): State {
+  ): State | null {
     const value = state.value;
     const stateConfig = findStateInfo(this.states, value);
     if (!stateConfig) {
@@ -533,6 +550,7 @@ export class Machine implements StateMachine.Machine {
             throw new Error(message);
           } else {
             LoggerDebug(message, []);
+            return null;
           }
 
         }
@@ -551,7 +569,7 @@ export class Machine implements StateMachine.Machine {
     state: State,
     transition: Transition,
     eventObject: EventObject,
-  ): State {
+  ): State | null {
     console.debug("* applyTransition: " + transition.target);
     const value = state.value;
     const stateConfig = findStateInfo(this.states, value);
@@ -603,6 +621,7 @@ export class Machine implements StateMachine.Machine {
           throw new Error(message);
         } else {
           LoggerDebug(message, []);
+          return null;
         }
     }
 
@@ -629,20 +648,12 @@ export class Machine implements StateMachine.Machine {
         //   allActionObjects.push(obj);
         // }
 
-        const res = handleActions(
-          // allActionObjects,
-          allActions,
-          eventObject
-        );
-        const nonAssignActions = res.actions;
-        const assigned = res.assigned;
-
         let resolvedTarget = target;
         if (isTargetless) {
           resolvedTarget = value;
         }
 
-        // child states! we choose the first one
+         // child states! we choose the first one
         const stateConfigResolved = findStateInfo(this.states, resolvedTarget);
         // console.log("--findStateInfo--END=");
         if (!stateConfigResolved) {
@@ -654,14 +665,30 @@ export class Machine implements StateMachine.Machine {
         if (stateConfigResolved.states !== null && stateConfigResolved.states.keys().length > 0) {
           // initial key
           let initialState = stateConfigResolved.states.keys()[0];
+          const initialStateObj = stateConfigResolved.states.get(initialState);
           if (initialState.at(0) != "#") {
             initialState = `${resolvedTarget}.${initialState}`
           }
           resolvedTarget = initialState;
+
+          // add the action of this child state
+          allActions = allActions.concat(processActions(initialStateObj.entry, eventObject));
         }
         // console.log("--findStateInfo--END2=");
 
         console.debug("* transition next target: " + resolvedTarget);
+
+
+
+        console.debug(`allActions.length: ` + allActions.length.toString())
+
+        const res = handleActions(
+          // allActionObjects,
+          allActions,
+          eventObject
+        );
+        const nonAssignActions = res.actions;
+        const assigned = res.assigned;
 
         return new State(resolvedTarget, nonAssignActions, target !== value || nonAssignActions.length > 0 || assigned);
         // matches: createMatcher(resolvedTarget)
@@ -884,10 +911,13 @@ export function eventual(config: MachineExternal, args: TimerArgs): void {
   let stateField = new ActionParam("state", args.state)
   let delayField = new ActionParam("delay", args.delay)
   let emptyEvent = new EventClass("", [intervalIdField, stateField, delayField]);
-  state = service.machine.applyTransition(state, transition, emptyEvent);
+  const newstate = service.machine.applyTransition(state, transition, emptyEvent);
+  if (newstate == null) {
+    return;
+  }
   // Set new state before executing actions
-  storage.setCurrentState(state);
-  executeStateActions(service, state, emptyEvent);
+  storage.setCurrentState(newstate);
+  executeStateActions(service, newstate, emptyEvent);
   // TODO listeners?
 }
 

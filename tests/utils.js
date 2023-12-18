@@ -40,19 +40,24 @@ function parseMachineStates(configStates = {}, statePath) {
             }
         })
 
-        let statealways = null
+        let statealways = []
         if (state.always) {
-            statealways = {
-                ...state.always,
-                target: parseStateName(state.always.target || "", statePath),
-                actions: parseActions(state.always.actions || []),
+            if (!(state.always instanceof Array)) {
+                state.always = [state.always];
+            }
+            for (let i = 0; i < state.always.length; i++) {
+                const st = {
+                    ...state.always[i],
+                    target: parseStateName(state.always[i].target || "", statePath),
+                    actions: parseActions(state.always[i].actions || []),
+                }
+                statealways.push(st);
             }
         }
 
         const entryActions = parseActions(state.entry);
         const exitActions = parseActions(state.exit);
         const initialState = state.initial || "";
-        console.log("--initialState--", initialState)
 
         return {
             name: stateName,
@@ -112,8 +117,6 @@ export function raise(event, options = {}) {
 }
 
 function parseStateName(stateName, statePath) {
-    console.log("--parseStateName--", stateName, statePath)
-    console.log("--parseStateName--", stateName == "", stateName[0] == "#")
     if (stateName == "") return stateName;
     if (stateName[0] == "#") return stateName;
     return statePath + "." + stateName;

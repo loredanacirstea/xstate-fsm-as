@@ -13,6 +13,7 @@ export const machineConfigSemaphore = {
                 guard: "",
                 actions: [],
             }],
+            always: [],
             after: [],
             exit: [],
             entry: [],
@@ -29,6 +30,7 @@ export const machineConfigSemaphore = {
                     actions: [],
                 },
             ],
+            always: [],
             after: [],
             exit: [],
             entry: [],
@@ -45,6 +47,7 @@ export const machineConfigSemaphore = {
                     actions: [],
                 },
             ],
+            always: [],
             after: [],
             exit: [],
             entry: [],
@@ -67,6 +70,7 @@ export const machineConfig2 = {
                 guard: "",
                     actions: [],
             }],
+            always: [],
             after: [],
             exit: [],
             entry: [],
@@ -105,6 +109,7 @@ export const machineConfig2 = {
                     ],
                 },
             ],
+            always: [],
             after: [],
             exit: [],
             entry: [],
@@ -121,6 +126,7 @@ export const machineConfig2 = {
                     actions: [],
                 },
             ],
+            always: [],
             after: [],
             exit: [],
             entry: [],
@@ -602,9 +608,9 @@ export const RAFT_Full = {
       electionReset: "0",
       max_block_gas: "20000000",
       electionTimeout: "0",
-      heartbeatTimeout: 5000,
-      minElectionTime: "3000",
       maxElectionTime: "6000",
+      minElectionTime: "4000",
+      heartbeatTimeout: 3000,
     },
     id: "RAFT-FULL-1",
     initial: "uninitialized",
@@ -694,25 +700,16 @@ export const RAFT_Full = {
               {
                 type: "sendVoteRequests",
               },
+            ],
+            always: [
               {
-                type: "cancelActiveIntervals",
-                params: {
-                  after: "electionTimeout",
-                },
+                target: "Leader",
+                guard: "isVotedLeader",
+              },
+              {
+                target: "Follower",
               },
             ],
-            after: {
-              electionTimeout: {
-                target: "#RAFT-FULL-1.initialized.Candidate",
-                guard: "ifIntervalActive",
-                actions: [],
-                meta: {},
-              },
-            },
-            always: {
-              target: "Leader",
-              guard: "isVotedLeader",
-            },
             on: {
               receiveHeartbeat: {
                 target: "Follower",
