@@ -53,6 +53,7 @@ export type StateInfoEvents = Map<string,Transition>
 export type StateTimers = Map<string,Transition>
 
 export interface StateInfo {
+  always: Transition | null;
   after: StateTimers | null;
   on: StateInfoEvents;
   exit: Array<ActionObject>;
@@ -327,6 +328,7 @@ export class TransitionExternal {
 }
 
 export class StateInfoClass implements StateInfo {
+  always: Transition | null;
   after: StateTimers | null;
   on: StateInfoEvents;
   exit: Array<ActionObject>;
@@ -335,6 +337,7 @@ export class StateInfoClass implements StateInfo {
   states: States;
 
   constructor(
+    always: Transition | null,
     after: StateTimers | null,
     on: StateInfoEvents,
     exit: Array<ActionObject>,
@@ -342,7 +345,8 @@ export class StateInfoClass implements StateInfo {
     initial: string,
     childstates: States,
   ) {
-    this.after = after
+    this.always = always;
+    this.after = after;
     this.on = on;
     this.exit = exit;
     this.entry = entry;
@@ -355,6 +359,7 @@ export class StateInfoClass implements StateInfo {
 @serializable
 export class StateInfoClassExternal {
   name: string;
+  always: TransitionExternal | null
   after: Array<TransitionExternal>;
   on: Array<TransitionExternal>;
   exit: Array<ActionObject>;
@@ -364,6 +369,7 @@ export class StateInfoClassExternal {
 
   constructor(
     name: string,
+    always: TransitionExternal | null,
     after: Array<TransitionExternal>,
     on: Array<TransitionExternal>,
     exit: Array<ActionObject>,
@@ -372,6 +378,7 @@ export class StateInfoClassExternal {
     childstates: Array<StateInfoClassExternal>,
   ) {
     this.name = name;
+    this.always = always;
     this.after = after;
     this.on = on;
     this.exit = exit;
@@ -447,8 +454,31 @@ export class StateInfoClassExternal {
         afterTimers.push(afterTimer);
       }
     }
+
+    let alwaysTransition: TransitionExternal | null = null;
+    if (stateInfo.always != null) {
+      const alwaysActions: Array<ActionObject> = [];
+      for (let k = 0; k < stateInfo.always.actions.length; k++) {
+        const actionobj = stateInfo.always.actions[k];
+        const _ev = actionobj.event;
+        let ev: EventClassExternal | null = null;
+        if (_ev !== null) {
+          ev = new EventClassExternal(_ev.type, _ev.params);
+        }
+        alwaysActions.push(new ActionObject(actionobj.type, actionobj.params, ev));
+    }
+      alwaysTransition = new TransitionExternal(
+        "always",
+        stateInfo.always.target,
+        alwaysActions,
+        stateInfo.always.guard,
+        null,
+      );
+      }
+
     return new StateInfoClassExternal(
       stateName,
+      alwaysTransition,
       afterTimers,
       onevents,
       [], // TODO stateInfo.exit
@@ -497,9 +527,20 @@ export class StateInfoClassExternal {
         afterTimers.set(aft.name, transition);
       }
     }
+    let alwaysTransition: Transition | null = null;
+    const _always = this.always;
+    if (_always != null) {
+      alwaysTransition = new Transition(
+        _always.target,
+        _always.actions,
+        _always.guard,
+        null,
+      );
+    }
 
     const childstates = StateInfoClassExternal.toInternalFromArray(this.states);
     return new StateInfoClass(
+      alwaysTransition,
       afterTimers,
       stateon,
       this.exit,

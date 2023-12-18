@@ -40,6 +40,15 @@ function parseMachineStates(configStates = {}, statePath) {
             }
         })
 
+        let statealways = null
+        if (state.always) {
+            statealways = {
+                ...state.always,
+                target: parseStateName(state.always.target || "", statePath),
+                actions: parseActions(state.always.actions || []),
+            }
+        }
+
         const entryActions = parseActions(state.entry);
         const exitActions = parseActions(state.exit);
         const initialState = state.initial || "";
@@ -48,6 +57,7 @@ function parseMachineStates(configStates = {}, statePath) {
         return {
             name: stateName,
             after: stateafter,
+            always: statealways,
             on: stateon,
             entry: entryActions,
             exit: exitActions,

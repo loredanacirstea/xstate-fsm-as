@@ -358,7 +358,7 @@ async function runTests() {
 
     currentState = await runFn("getCurrentState", machine, {});
     console.log("!!!!!currentState", decodeFromUtf8Array(currentState))
-    assert.strictEqual(decodeFromUtf8Array(currentState), "#RAFT-FULL-1.initialized.Candidate");
+    assert.strictEqual(decodeFromUtf8Array(currentState), "#RAFT-FULL-1.initialized.Leader.active");
 }
 
 runTests();

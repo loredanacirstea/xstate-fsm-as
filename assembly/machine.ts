@@ -149,6 +149,16 @@ function executeStateActions(
   if (!newstateconfig) {
     return revert("could not find state config for " + state.value);
   }
+
+  const alwaysTransition = newstateconfig.always;
+  if (alwaysTransition != null) {
+    const emptyEvent = new EventClass("", [])
+    const newstate = service.machine.applyTransition(state, alwaysTransition, emptyEvent)
+    // Set new state before executing actions
+    storage.setCurrentState(newstate);
+    executeStateActions(service, newstate, emptyEvent);
+  }
+
   const afterTimers = newstateconfig.after;
   // console.log("===executeStateActions afterTimers===")
   if (afterTimers == null) {

@@ -207,6 +207,7 @@ export function isVotedLeader(
     }
     const len = voteArray.length;
     const majority = i64(f64.floor(f64(len) / 2) + 1);
+    consensuswrap.LoggerDebug("check if is voted Leader", ["yes", count.toString(), "votes", len.toString(), "majority", majority.toString()])
     return count >= majority;
 }
 
@@ -252,6 +253,7 @@ function voteInternal(termId: i32, candidateId: i32, lastLogIndex: i64, lastLogT
         // update termId & votedFor
         setTermId(termId);
         setVotedFor(candidateId);
+        response = new VoteResponse(termId, true);
     } else {
         // if we already voted, we do not grant a new vote
         if (hasVotedFor()) {
