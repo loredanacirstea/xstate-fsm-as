@@ -120,6 +120,7 @@ function executeGuard(
     guard: string,
     event: EventObject,
 ): boolean {
+    LoggerDebug("execute guard", ["guard", guard]);
     if (guard === "isAdmin") return isAdmin([]);
     if (guard === "hasEnoughBalance") return actionsErc20.hasEnoughBalance([], event);
     if (guard === "hasEnoughAllowance") return actionsErc20.hasEnoughAllowance([], event);
@@ -904,6 +905,7 @@ export function eventual(config: MachineExternal, args: TimerArgs): void {
   if (!transition) {
     revert("delayed transition not found: " + args.delay);
   }
+
   // just a copied transition
   let state = storage.getCurrentState();
   // we add the interval id in the event
@@ -911,6 +913,7 @@ export function eventual(config: MachineExternal, args: TimerArgs): void {
   let stateField = new ActionParam("state", args.state)
   let delayField = new ActionParam("delay", args.delay)
   let emptyEvent = new EventClass("", [intervalIdField, stateField, delayField]);
+  console.debug("* execute delayed action - guard: " + transition.guard)
   const newstate = service.machine.applyTransition(state, transition, emptyEvent);
   if (newstate == null) {
     return;
@@ -936,7 +939,7 @@ function registerIntervalIdKey(state: string, delay: string, intervalId: i64): s
 }
 
 function registerLastIntervalIdKey(state: string, delay: string): string {
-  return `${INTERVAL_ID_KEY}_${state}_${delay}}`
+  return `${INTERVAL_ID_KEY}_${state}_${delay}`
 }
 
 function registerIntervalId(state: string, delay: string, intervalId: i64): void {

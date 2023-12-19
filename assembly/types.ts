@@ -448,7 +448,7 @@ export class StateInfoClassExternal {
           delay,
           delayedTransition.target,
           dActions,
-          "",
+          delayedTransition.guard,
           null,
         );
         afterTimers.push(afterTimer);
@@ -524,7 +524,7 @@ export class StateInfoClassExternal {
             const action = aft.actions[k];
             actions.push(new ActionObject(action.type, action.params, action.event));
         }
-        const transition = new Transition(aft.target, actions, "", null);
+        const transition = new Transition(aft.target, actions, aft.guard, null);
         afterTimers.set(aft.name, transition);
       }
     }
