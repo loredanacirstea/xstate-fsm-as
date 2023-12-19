@@ -19,6 +19,8 @@ import { LoggerDebug, LoggerError } from "./consensus";
 // start at 0 TODO?
 const LOG_START = 1;
 
+const ERROR_INVALID_TX = "transaction is invalid";
+
 // LEADER:
 // new tx -> check tx -> add to mempool
 // proposeBlock -> mempool batch -> startBlockProposal -> propose block -> process block -> save to logs
@@ -46,6 +48,103 @@ export const BlockPartSizeBytes: u32 = 65536 // 64kB
 
 // MaxBlockPartsCount is the maximum number of block parts.
 export const MaxBlockPartsCount = (MaxBlockSizeBytes / BlockPartSizeBytes) + 1
+
+//// storage
+
+
+/// Context values
+const NODE_IPS = "nodeIPs";
+const CURRENT_NODE_ID = "currentNodeId";
+const HEARTBEAT_TIMEOUT = "heartbeatTimeout";
+const ELECTION_TIMEOUT_KEY = "electionTimeout";
+const ELECTION_RESET_KEY = "electionReset";
+
+//// Persistent state on all servers:
+const TERM_ID = "currentTerm";
+const VOTED_FOR_KEY = "votedFor"
+// log[]
+
+//// Volatile state on all servers:
+// index of highest log entry applied to state machine (initialized to 0, increases monotonically)
+const LAST_APPLIED = "lastApplied";
+// index of highest log entry known to be committed (initialized to 0, increases monotonically)
+const COMMIT_INDEX = "commitIndex";
+
+//// Volatile state on leaders
+// for each server, index of highest log entry known to be replicated on server (initialized to 0, increases monotonically)
+const MATCH_INDEX_ARRAY = "matchIndex";
+// for each server, index of the next log entry to send to that server (initialized to leader last log index + 1)
+const NEXT_INDEX_ARRAY = "nextIndex";
+
+const VOTE_INDEX_ARRAY = "voteIndex";
+
+//// Cosmos-specific
+const MEMPOOL_KEY = "mempool";
+
+const MAX_TX_BYTES = "max_tx_bytes";
+
+// index of log entry immediately preceding new ones
+// const PREV_LOG_INDEX = "prevLogIndex";
+
+//// blockchain
+const TX_INDEXER = "tx_";
+
+const PARAMS_KEY = "consensus_params";
+const VALIDATORS_KEY = "validators";
+const STATE_KEY = "state";
+
+// forward transactions to leader
+export function forwardTxsToLeader(
+    params: ActionParam[],
+    event: EventObject,
+): void {
+    // look in the mempool to see if we have user transactions left
+    // and send to leader
+    const mempool = getMempool();
+    if (mempool.txs.length == 0) {
+        return;
+    }
+
+    // get leader from last log
+    const entry = getLastLog();
+    if (entry.index == 0) {
+        return;
+    }
+    const nodeId = entry.leaderId;
+    const nodeIps = getNodeIPs();
+    const nodeIp = nodeIps[nodeId];
+    const contract = wasmx.getAddress();
+
+    let limit = mempool.txs.length;
+    if (limit > 5) {
+        limit = 5;
+    }
+    const txs = mempool.txs.slice(0, limit);
+    consensuswrap.LoggerDebug("forwarding txs to leader", ["nodeId", nodeId.toString(), "nodeIp", nodeIp, "count", limit.toString()])
+
+    for (let i = 0; i < limit; i++) {
+        const tx = txs[0];
+        const msgstr = `{"run":{"event":{"type":"newTransaction","params":[{"key": "transaction","value":"${tx}"}]}}}`
+        const msgBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(msgstr)));
+        const response = wasmxwrap.grpcRequest(nodeIp, Uint8Array.wrap(contract), msgBase64);
+        consensuswrap.LoggerDebug("forwarding tx to leader", ["nodeId", nodeId.toString(), "nodeIp", nodeIp, "batch", i.toString(), "error", response.error])
+
+        if (response.error.length == 0) {
+            mempool.txs.splice(i, 1);
+            continue;
+        }
+        // should never happen, because we check when we receive the tx
+        if (response.error.includes(ERROR_INVALID_TX)) {
+            mempool.txs.splice(i, 1);
+            consensuswrap.LoggerDebug("forwarded invalid transaction", ["tx", tx]);
+        } else {
+            // leader is not ready, we return
+            break;
+        }
+    }
+
+    setMempool(mempool);
+}
 
 export function initializeNextIndex(
     params: ActionParam[],
@@ -425,6 +524,7 @@ export function sendAppendEntries(
     }
 }
 
+// this actually commits one block at a time
 export function commitBlocks(
     params: ActionParam[],
     event: EventObject,
@@ -528,7 +628,7 @@ export function sendNewTransactionResponse(
     params: ActionParam[],
     event: EventObject,
 ): void {
-    // we expect that an entry has been added
+
     const entry = getLastLog();
     const response = new TransactionResponse(
         entry.termId,
@@ -538,7 +638,7 @@ export function sendNewTransactionResponse(
     wasmx.setReturnData(String.UTF8.encode(JSON.stringify<TransactionResponse>(response)));
 }
 
-export function appendLog(
+export function addToMempool(
     params: ActionParam[],
     event: EventObject,
 ): void {
@@ -553,13 +653,21 @@ export function appendLog(
         revert("no transaction found");
     }
     consensuswrap.LoggerDebug("new transaction received", ["transaction", transaction])
-    return appendLogInternal(transaction)
+    return addTransactionToMempool(transaction)
 }
 
 export function proposeBlock(
     params: ActionParam[],
     event: EventObject,
 ): void {
+    // if last block is not commited, we return; Cosmos SDK can only commit one block at a time.
+    const height = getLastLogIndex();
+    const lastCommitIndex = getCommitIndex();
+    if (height < lastCommitIndex) {
+        consensuswrap.LoggerInfo("cannot propose new block, last block not commited", ["height", height.toString(), "lastCommitIndex", lastCommitIndex.toString()])
+        return;
+    }
+
     const mempool = getMempool();
     const cparams = getConsensusParams();
     let maxbytes = cparams.block.max_bytes;
@@ -591,7 +699,7 @@ export function getLogEntry(
     return storage.getContextValue(key);
 }
 
-export function appendLogInternal(
+export function addTransactionToMempool(
     transaction: string, // base64
 ): void {
     // check that tx is valid
@@ -599,8 +707,8 @@ export function appendLogInternal(
     const checkResp = consensuswrap.CheckTx(checktx);
     // we only check the code type; CheckTx should be stateless, just form checking
     if (checkResp.code !== typestnd.CodeType.Ok) {
-        // transaction is not valid, we should finish
-        return revert(`transaction is invalid; code ${checkResp.code}`);
+        // transaction is not valid, we should finish; we use this error to check forwarded txs to leader
+        return revert(`${ERROR_INVALID_TX}; code ${checkResp.code}`);
     }
 
     // add to mempool
@@ -849,47 +957,6 @@ export function getLogEntryKey(index: i64): string {
 export function getLastLogIndexKey(): string {
     return "logs_last_index";
 }
-
-/// Context values
-const NODE_IPS = "nodeIPs";
-const CURRENT_NODE_ID = "currentNodeId";
-const HEARTBEAT_TIMEOUT = "heartbeatTimeout";
-const ELECTION_TIMEOUT_KEY = "electionTimeout";
-const ELECTION_RESET_KEY = "electionReset";
-
-//// Persistent state on all servers:
-const TERM_ID = "currentTerm";
-const VOTED_FOR_KEY = "votedFor"
-// log[]
-
-//// Volatile state on all servers:
-// index of highest log entry applied to state machine (initialized to 0, increases monotonically)
-const LAST_APPLIED = "lastApplied";
-// index of highest log entry known to be committed (initialized to 0, increases monotonically)
-const COMMIT_INDEX = "commitIndex";
-
-//// Volatile state on leaders
-// for each server, index of highest log entry known to be replicated on server (initialized to 0, increases monotonically)
-const MATCH_INDEX_ARRAY = "matchIndex";
-// for each server, index of the next log entry to send to that server (initialized to leader last log index + 1)
-const NEXT_INDEX_ARRAY = "nextIndex";
-
-const VOTE_INDEX_ARRAY = "voteIndex";
-
-//// Cosmos-specific
-const MEMPOOL_KEY = "mempool";
-
-const MAX_TX_BYTES = "max_tx_bytes";
-
-// index of log entry immediately preceding new ones
-// const PREV_LOG_INDEX = "prevLogIndex";
-
-//// blockchain
-const TX_INDEXER = "tx_";
-
-const PARAMS_KEY = "consensus_params";
-const VALIDATORS_KEY = "validators";
-const STATE_KEY = "state";
 
 function getTermId(): i32 {
     const value = storage.getContextValue(TERM_ID);

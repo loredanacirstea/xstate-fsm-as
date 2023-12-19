@@ -700,6 +700,10 @@ export class Mempool {
         this.txs.splice(0, batch.txs.length);
         return batch;
     }
+
+    spliceTxs(limit: i32): string[] {
+        return this.txs.splice(0, limit);
+    }
 }
 
 // 4 chars represent 3 bytes

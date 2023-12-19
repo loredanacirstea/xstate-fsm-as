@@ -17,9 +17,9 @@ export const machine = createMachine(
       electionReset: "0",
       max_block_gas: "20000000",
       electionTimeout: "0",
-      maxElectionTime: "6000",
-      minElectionTime: "4000",
-      heartbeatTimeout: 3000,
+      maxElectionTime: "20000",
+      minElectionTime: "10000",
+      heartbeatTimeout: "3000",
     },
     id: "RAFT-FULL-1",
     initial: "uninitialized",
@@ -62,6 +62,9 @@ export const machine = createMachine(
                   after: "electionTimeout",
                 },
               },
+              {
+                type: "forwardTxsToLeader",
+              },
             ],
             after: {
               electionTimeout: {
@@ -88,6 +91,16 @@ export const machine = createMachine(
                 actions: {
                   type: "vote",
                 },
+              },
+              newTransaction: {
+                actions: [
+                  {
+                    type: "addToMempool",
+                  },
+                  {
+                    type: "sendNewTransactionResponse",
+                  },
+                ],
               },
             },
           },
@@ -131,6 +144,16 @@ export const machine = createMachine(
                   },
                 ],
               },
+              newTransaction: {
+                actions: [
+                  {
+                    type: "addToMempool",
+                  },
+                  {
+                    type: "sendNewTransactionResponse",
+                  },
+                ],
+              },
             },
           },
           Leader: {
@@ -150,10 +173,10 @@ export const machine = createMachine(
                     type: "sendAppendEntries",
                   },
                   {
-                    type: "proposeBlock",
+                    type: "commitBlocks",
                   },
                   {
-                    type: "commitBlocks",
+                    type: "proposeBlock",
                   },
                 ],
                 after: {
@@ -167,7 +190,7 @@ export const machine = createMachine(
                   newTransaction: {
                     actions: [
                       {
-                        type: "appendLog",
+                        type: "addToMempool",
                       },
                       {
                         type: "sendNewTransactionResponse",
@@ -209,7 +232,6 @@ export const machine = createMachine(
     types: {
       events: {} as
         | { type: "" }
-        | { type: "reset" }
         | { type: "setup"; nodeIPs: string; currentNodeId: string }
         | { type: "start" }
         | { type: "newChange"; transaction: string }
@@ -232,7 +254,8 @@ export const machine = createMachine(
             candidateId: string;
             lastLogTerm: string;
             lastLogIndex: string;
-          },
+          }
+        | { type: "reset" },
       context: {} as {
         log: string;
         nodeIPs: string;
@@ -262,12 +285,12 @@ export const machine = createMachine(
       initializeNextIndex: ({ context, event }) => {},
       initializeMatchIndex: ({ context, event }) => {},
       sendAppendEntries: ({ context, event }) => {},
-      proposeBlock: ({ context, event }) => {},
       commitBlocks: ({ context, event }) => {},
+      proposeBlock: ({ context, event }) => {},
       incrementCurrentTerm: ({ context, event }) => {},
       selfVote: ({ context, event }) => {},
       sendVoteRequests: ({ context, event }) => {},
-      appendLog: ({ context, event }) => {},
+      addToMempool: ({ context, event }) => {},
       sendNewTransactionResponse: ({ context, event }) => {},
       updateNextIndex: ({ context, event }) => {},
       updateMatchIndex: ({ context, event }) => {},
@@ -276,6 +299,7 @@ export const machine = createMachine(
       sendHeartbeatResponse: ({ context, event }) => {},
       setupNode: ({ context, event }) => {},
       vote: ({ context, event }) => {},
+      forwardTxsToLeader: ({ context, event }) => {},
     },
     actors: {},
     guards: {

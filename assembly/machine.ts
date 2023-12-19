@@ -282,8 +282,8 @@ function executeStateAction(
       actionsRaft.sendNewTransactionResponse(actionParams, event);
       return;
     }
-    if (actionType === "appendLog") {
-      actionsRaft.appendLog(actionParams, event);
+    if (actionType === "addToMempool") {
+      actionsRaft.addToMempool(actionParams, event);
       return;
     }
     if (actionType === "proposeBlock") {
@@ -320,6 +320,10 @@ function executeStateAction(
     }
     if (actionType === "selfVote") {
       actionsRaft.selfVote(actionParams, event);
+      return;
+    }
+    if (actionType === "forwardTxsToLeader") {
+      actionsRaft.forwardTxsToLeader(actionParams, event);
       return;
     }
     if (actionType === "noaction") {

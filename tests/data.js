@@ -551,7 +551,7 @@ export const RAFTLogReplication = {
                   newTransaction: {
                     actions: [
                       {
-                        type: "appendLog",
+                        type: "addToMempool",
                       },
                       {
                         type: "sendNewTransactionResponse",
@@ -653,6 +653,9 @@ export const RAFT_Full = {
                   after: "electionTimeout",
                 },
               },
+              {
+                type: "forwardTxsToLeader",
+              },
             ],
             after: {
               electionTimeout: {
@@ -679,6 +682,16 @@ export const RAFT_Full = {
                 actions: {
                   type: "vote",
                 },
+              },
+              newTransaction: {
+                actions: [
+                  {
+                    type: "addToMempool",
+                  },
+                  {
+                    type: "sendNewTransactionResponse",
+                  },
+                ],
               },
             },
           },
@@ -722,6 +735,16 @@ export const RAFT_Full = {
                   },
                 ],
               },
+              newTransaction: {
+                actions: [
+                  {
+                    type: "addToMempool",
+                  },
+                  {
+                    type: "sendNewTransactionResponse",
+                  },
+                ],
+              },
             },
           },
           Leader: {
@@ -741,10 +764,10 @@ export const RAFT_Full = {
                     type: "sendAppendEntries",
                   },
                   {
-                    type: "proposeBlock",
+                    type: "commitBlocks",
                   },
                   {
-                    type: "commitBlocks",
+                    type: "proposeBlock",
                   },
                 ],
                 after: {
@@ -758,7 +781,7 @@ export const RAFT_Full = {
                   newTransaction: {
                     actions: [
                       {
-                        type: "appendLog",
+                        type: "addToMempool",
                       },
                       {
                         type: "sendNewTransactionResponse",
