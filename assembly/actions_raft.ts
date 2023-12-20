@@ -1381,7 +1381,6 @@ export function electionReset(): void {
 function getValidatorsHash(validators: typestnd.ValidatorInfo[]): string {
     let data = new Array<string>(validators.length);
     for (let i = 0; i < validators.length; i++) {
-        console.debug("--getValidatorsHash-pub_key-" + i.toString() + "-" + validators[i].pub_key)
         // hex
         const pub_key = hexToUint8Array(validators[i].pub_key);
         const power = i64ToUint8ArrayBE(validators[i].voting_power);

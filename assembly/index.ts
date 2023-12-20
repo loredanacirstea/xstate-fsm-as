@@ -51,15 +51,12 @@ export function main(): u8[] {
 }
 
 export function eventual(): void {
-  console.log("* eventual");
   const icalld = wasmxwrap.getInterpreterCalldata();
   const configBz = icalld[0];
   const calld = icalld[1];
   const config = JSON.parse<MachineExternal>(String.UTF8.decode(configBz));
-  console.log("* eventual: calld: " + calld.byteLength.toString());
   const argsStr = String.UTF8.decode(calld);
-  console.log("* eventual: args: " + argsStr);
+  console.debug("* eventual: args: " + argsStr);
   const _args = JSON.parse<TimerArgs>(argsStr);
-  console.log("* eventual: parsed args");
   _eventual(config, _args);
 }
