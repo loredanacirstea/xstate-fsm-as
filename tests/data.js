@@ -641,6 +641,9 @@ export const RAFT_Full = {
           Follower: {
             entry: [
               {
+                type: "registeredCheck",
+              },
+              {
                 type: "setRandomElectionTimeout",
                 params: {
                   max: "$maxElectionTime",
@@ -793,7 +796,7 @@ export const RAFT_Full = {
                   },
                   nodeUpdate: {
                     actions: {
-                      type: "updateNode",
+                      type: "updateNodeAndReturn",
                     },
                   },
                 },

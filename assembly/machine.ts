@@ -326,8 +326,12 @@ function executeStateAction(
       actionsRaft.forwardTxsToLeader(actionParams, event);
       return;
     }
-    if (actionType === "updateNode") {
-      actionsRaft.updateNode(actionParams, event);
+    if (actionType === "updateNodeAndReturn") {
+      actionsRaft.updateNodeAndReturn(actionParams, event);
+      return;
+    }
+    if (actionType === "registeredCheck") {
+      actionsRaft.registeredCheck(actionParams, event);
       return;
     }
     if (actionType === "noaction") {

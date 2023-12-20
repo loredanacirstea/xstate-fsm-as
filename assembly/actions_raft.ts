@@ -8,6 +8,7 @@ import * as storage from './storage';
 import {
   EventObject,
   ActionParam,
+  UpdateNodeResponse,
 } from './types';
 import { hexToUint8Array, revert, parseInt32, parseInt64, i32ToUint8ArrayBE, uint8ArrayToHex, i64ToUint8ArrayBE } from "./utils";
 import { LogEntry, TransactionResponse, AppendEntry, AppendEntryResponse, VoteResponse, VoteRequest } from "./types_raft";
@@ -95,10 +96,59 @@ const PARAMS_KEY = "consensus_params";
 const VALIDATORS_KEY = "validators";
 const STATE_KEY = "state";
 
-// TODO updateNode response to see if the node was added?
+export function registeredCheck(
+    params: ActionParam[],
+    event: EventObject,
+): void {
+    // when a node starts, it needs to add itself to the pack
+    // we just need [ourIP, leaderIP]
+
+    // if blocks, return
+    const lastIndex = getLastLogIndex();
+    if (lastIndex > LOG_START) {
+        return;
+    }
+    // if we are alone, return
+    const ips = getNodeIPs();
+    if (ips.length == 1) {
+        return;
+    }
+    // we have tried to become leader 2 times
+    const termId = getTermId();
+    if (termId < 2) {
+        return;
+    }
+    consensuswrap.LoggerInfo("trying to register node IP with Leader", []);
+
+    // send updateNode to all ips except us
+    const nodeId = getCurrentNodeId();
+    const nodeIp = ips[nodeId];
+    const msgstr = `{"run":{"event":{"type":"nodeUpdate","params":[{"key": "ip","value":"${nodeIp}"},{"key": "index","value":"${nodeId}"},{"key": "removed","value":"0"}]}}}`
+    consensuswrap.LoggerDebug("register request", ["req", msgstr])
+    const msgBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(msgstr)));
+    // we send the request to the same contract
+    const contract = wasmx.getAddress();
+
+    for (let i = 0; i < ips.length; i++) {
+        // don't send to ourselves or to removed nodes
+        if (i == nodeId || ips[i] == "") continue;
+        const response = wasmxwrap.grpcRequest(ips[i], Uint8Array.wrap(contract), msgBase64);
+        consensuswrap.LoggerDebug("register response", ["error", response.error])
+        if (response.error.length > 0 || response.data.length == 0) {
+            return
+        }
+        const resp = JSON.parse<UpdateNodeResponse>(response.data);
+        if (resp.nodeIPs[resp.nodeId] != nodeIp) {
+            consensuswrap.LoggerError("register response has wrong ip", ["expected", nodeIp]);
+            // TODO what?
+        }
+        setCurrentNodeId(resp.nodeId);
+        setNodeIPs(resp.nodeIPs);
+    }
+}
 
 // temporary node updates - only for Leader
-export function updateNode(
+export function updateNodeAndReturn(
     params: ActionParam[],
     event: EventObject,
 ): void {
@@ -142,6 +192,7 @@ export function updateNode(
             consensuswrap.LoggerDebug("ip already included", ["ip", ip])
             return;
         }
+        const newindex = ips.length;
         ips.push(ip);
         const nextIndexes = getNextIndexArray();
         const matchIndexes = getMatchIndexArray();
@@ -149,6 +200,8 @@ export function updateNode(
         matchIndexes.push(LOG_START);
         setNextIndexArray(nextIndexes);
         setMatchIndexArray(matchIndexes);
+        const response = new UpdateNodeResponse(ips, newindex);
+        wasmx.setReturnData(String.UTF8.encode(JSON.stringify<UpdateNodeResponse>(response)));
     }
     setNodeIPs(ips);
 }
@@ -546,7 +599,24 @@ export function processAppendEntries(
         setCommitIndex(i);
         setLastApplied(i);
     }
+
+    // update our nodeips
+    const ips = getNodeIPs();
+    const nodeId = getCurrentNodeId();
+    const nodeIp = ips[nodeId];
     setNodeIPs(entry.nodeIps);
+    // check that our nodeId is still in line
+    let newId = nodeId;
+    for(let i = 0; i < entry.nodeIps.length; i++) {
+        if (entry.nodeIps[i] == nodeIp) {
+            newId = i;
+            break;
+        }
+    }
+    if (newId != nodeId) {
+        consensuswrap.LoggerDebug("our node ID has changed", ["old", nodeId.toString(), "new", newId.toString()])
+        setCurrentNodeId(newId);
+    }
 }
 
 export function processAppendEntry(entry: LogEntry): void {
@@ -1089,6 +1159,10 @@ function getCurrentNodeId(): i32 {
     const value = storage.getContextValue(CURRENT_NODE_ID);
     if (value === "") return i32(0);
     return parseInt32(value);
+}
+
+function setCurrentNodeId(index: i32): void {
+    storage.setContextValue(CURRENT_NODE_ID, index.toString());
 }
 
 function getLastApplied(): i64 {

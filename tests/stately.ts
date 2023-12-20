@@ -50,6 +50,9 @@ export const machine = createMachine(
           Follower: {
             entry: [
               {
+                type: "registeredCheck",
+              },
+              {
                 type: "setRandomElectionTimeout",
                 params: {
                   max: "$maxElectionTime",
@@ -202,7 +205,7 @@ export const machine = createMachine(
                   },
                   nodeUpdate: {
                     actions: {
-                      type: "updateNode",
+                      type: "updateNodeAndReturn",
                     },
                   },
                 },
@@ -274,9 +277,9 @@ export const machine = createMachine(
   },
   {
     actions: {
+      registeredCheck: ({ context, event }) => {},
       setRandomElectionTimeout: ({ context, event }) => {},
       cancelActiveIntervals: ({ context, event }) => {},
-      forwardTxsToLeader: ({ context, event }) => {},
       initializeNextIndex: ({ context, event }) => {},
       initializeMatchIndex: ({ context, event }) => {},
       sendAppendEntries: ({ context, event }) => {},
@@ -291,7 +294,8 @@ export const machine = createMachine(
       sendHeartbeatResponse: ({ context, event }) => {},
       setupNode: ({ context, event }) => {},
       vote: ({ context, event }) => {},
-      updateNode: ({ context, event }) => {},
+      updateNodeAndReturn: ({ context, event }) => {},
+      forwardTxsToLeader: ({ context, event }) => {},
     },
     actors: {},
     guards: {
