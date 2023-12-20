@@ -24,6 +24,8 @@ const STATE_SYNC_BATCH = 200;
 
 const ERROR_INVALID_TX = "transaction is invalid";
 
+const MAX_LOGGED = 2000;
+
 // LEADER:
 // new tx -> check tx -> add to mempool
 // proposeBlock -> mempool batch -> startBlockProposal -> propose block -> process block -> save to logs
@@ -124,7 +126,7 @@ export function registeredCheck(
     const nodeId = getCurrentNodeId();
     const nodeIp = ips[nodeId];
     const msgstr = `{"run":{"event":{"type":"nodeUpdate","params":[{"key": "ip","value":"${nodeIp}"},{"key": "index","value":"${nodeId}"},{"key": "removed","value":"0"}]}}}`
-    consensuswrap.LoggerDebug("register request", ["req", msgstr])
+    consensuswrap.LoggerInfo("register request", ["req", msgstr])
     const msgBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(msgstr)));
     // we send the request to the same contract
     const contract = wasmx.getAddress();
@@ -133,7 +135,7 @@ export function registeredCheck(
         // don't send to ourselves or to removed nodes
         if (i == nodeId || ips[i] == "") continue;
         const response = wasmxwrap.grpcRequest(ips[i], Uint8Array.wrap(contract), msgBase64);
-        consensuswrap.LoggerDebug("register response", ["error", response.error])
+        consensuswrap.LoggerInfo("register response", ["error", response.error, "data", response.data])
         if (response.error.length > 0 || response.data.length == 0) {
             return
         }
@@ -203,6 +205,7 @@ export function updateNodeAndReturn(
         const response = new UpdateNodeResponse(ips, newindex);
         wasmx.setReturnData(String.UTF8.encode(JSON.stringify<UpdateNodeResponse>(response)));
     }
+    consensuswrap.LoggerInfo("node updates", ["ips", ips.join(",")])
     setNodeIPs(ips);
 }
 
@@ -575,7 +578,7 @@ export function processAppendEntries(
     // TODO we also look at termId, as we might need to rollback changes in case of a network split
     let entryBase64: string = event.params[0].value;
     const entryStr = String.UTF8.decode(decodeBase64(entryBase64).buffer);
-    consensuswrap.LoggerDebug("received new entries", ["AppendEntry", entryStr.slice(0, 500) + " [...]"]);
+    consensuswrap.LoggerDebug("received new entries", ["AppendEntry", entryStr.slice(0, MAX_LOGGED) + " [...]"]);
 
     let entry: AppendEntry = JSON.parse<AppendEntry>(entryStr);
     consensuswrap.LoggerInfo("received new entries", [
@@ -1088,7 +1091,7 @@ export function setLogEntry(
     index: i64,
     entry: string,
 ): void {
-    consensuswrap.LoggerDebug("setting entry", ["height", index.toString(), "value", entry])
+    consensuswrap.LoggerDebug("setting entry", ["height", index.toString(), "value", entry.slice(0, MAX_LOGGED) + " [...]"])
     const key = getLogEntryKey(index);
     storage.setContextValue(key, entry);
 }

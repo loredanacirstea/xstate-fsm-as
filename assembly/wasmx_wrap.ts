@@ -10,6 +10,8 @@ import {
 import { hexToU8, uint8ArrayToHex, hexToUint8Array, parseUint8ArrayToI32BigEndian } from "./utils";
 import { MachineExternal } from './machine';
 
+const MAX_LOGGED = 2000
+
 export class InterpreterCallData {
     config: MachineExternal;
     calldata: CallData;
@@ -134,7 +136,7 @@ class GrpcResponse {
 export function grpcRequest(ip: string, contract: Uint8Array, data: string): GrpcResponse {
     const contractAddress = encodeBase64(contract);
     const reqstr = `{"ip_address":"${ip}","contract":"${contractAddress}","data":"${data}"}`
-    console.debug("grpc request: " + reqstr.slice(0, 500) + " [...]");
+    console.debug("grpc request: " + reqstr.slice(0, MAX_LOGGED) + " [...]");
     const req = String.UTF8.encode(reqstr);
     const result = wasmx.grpcRequest(req);
     console.debug("grpc response: " + String.UTF8.decode(result));
