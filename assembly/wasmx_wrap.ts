@@ -134,7 +134,7 @@ class GrpcResponse {
 export function grpcRequest(ip: string, contract: Uint8Array, data: string): GrpcResponse {
     const contractAddress = encodeBase64(contract);
     const reqstr = `{"ip_address":"${ip}","contract":"${contractAddress}","data":"${data}"}`
-    console.debug("grpc request: " + reqstr);
+    console.debug("grpc request: " + reqstr.slice(0, 500) + " [...]");
     const req = String.UTF8.encode(reqstr);
     const result = wasmx.grpcRequest(req);
     console.debug("grpc response: " + String.UTF8.decode(result));

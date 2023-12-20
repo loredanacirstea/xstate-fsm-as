@@ -19,6 +19,8 @@ import { LoggerDebug, LoggerError } from "./consensus";
 // start at 0 TODO?
 const LOG_START = 1;
 
+const STATE_SYNC_BATCH = 200;
+
 const ERROR_INVALID_TX = "transaction is invalid";
 
 // LEADER:
@@ -92,6 +94,64 @@ const TX_INDEXER = "tx_";
 const PARAMS_KEY = "consensus_params";
 const VALIDATORS_KEY = "validators";
 const STATE_KEY = "state";
+
+// TODO updateNode response to see if the node was added?
+
+// temporary node updates - only for Leader
+export function updateNode(
+    params: ActionParam[],
+    event: EventObject,
+): void {
+    let ip: string = "";
+    let indexstr: string = "";
+    let removedstr: string = "";
+    for (let i = 0; i < event.params.length; i++) {
+        if (event.params[i].key === "ip") {
+            ip = event.params[i].value;
+            continue;
+        }
+        if (event.params[i].key === "index") {
+            indexstr = event.params[i].value;
+            continue;
+        }
+        if (event.params[i].key === "removed") {
+            removedstr = event.params[i].value;
+            continue;
+        }
+    }
+    if (ip === "") {
+        revert("update node: empty ip");
+    }
+    if (removedstr === "") {
+        revert("update node: empty removed");
+    }
+    const removed = removedstr == "1";
+    if (removed) {
+        if (indexstr === "") {
+            revert("update node: empty index");
+        }
+    }
+    const index = parseInt32(indexstr);
+    const ips = getNodeIPs();
+    if (removed) {
+        // idempotent
+        ips[index] = "";
+    } else {
+        // make it idempotent & don't add same ip multiple times
+        if (ips.includes(ip)) {
+            consensuswrap.LoggerDebug("ip already included", ["ip", ip])
+            return;
+        }
+        ips.push(ip);
+        const nextIndexes = getNextIndexArray();
+        const matchIndexes = getMatchIndexArray();
+        nextIndexes.push(LOG_START + 1);
+        matchIndexes.push(LOG_START);
+        setNextIndexArray(nextIndexes);
+        setMatchIndexArray(matchIndexes);
+    }
+    setNodeIPs(ips);
+}
 
 // forward transactions to leader
 export function forwardTxsToLeader(
@@ -289,7 +349,8 @@ export function sendVoteRequests(
     const ips = getNodeIPs();
     consensuswrap.LoggerDebug("sending vote requests...", ["candidateId", candidateId.toString(), "termId", termId.toString(), "lastLogIndex", lastLogIndex.toString(), "lastLogTerm", lastLogTerm.toString(), "ips", JSON.stringify<Array<string>>(ips)])
     for (let i = 0; i < ips.length; i++) {
-        if (candidateId === i) continue;
+        // don't send to ourselves or to removed nodes
+        if (candidateId === i || ips[i].length == 0) continue;
         sendVoteRequest(i, ips[i], request, termId);
     }
 }
@@ -304,8 +365,8 @@ export function isVotedLeader(
     for (let i = 0; i < voteArray.length; i++) {
         count += voteArray[i];
     }
-    const len = voteArray.length;
-    const majority = i64(f64.floor(f64(len) / 2) + 1);
+    const len = getNodeCount();
+    const majority = getMajority(len);
     consensuswrap.LoggerDebug("check if is voted Leader", ["yes", count.toString(), "votes", len.toString(), "majority", majority.toString()])
     return count >= majority;
 }
@@ -461,7 +522,7 @@ export function processAppendEntries(
     // TODO we also look at termId, as we might need to rollback changes in case of a network split
     let entryBase64: string = event.params[0].value;
     const entryStr = String.UTF8.decode(decodeBase64(entryBase64).buffer);
-    consensuswrap.LoggerDebug("received new entries", ["AppendEntry", entryStr]);
+    consensuswrap.LoggerDebug("received new entries", ["AppendEntry", entryStr.slice(0, 500) + " [...]"]);
 
     let entry: AppendEntry = JSON.parse<AppendEntry>(entryStr);
     consensuswrap.LoggerInfo("received new entries", [
@@ -471,6 +532,7 @@ export function processAppendEntries(
         "prevLogIndex", entry.prevLogIndex.toString(),
         "prevLogTerm", entry.prevLogTerm.toString(),
         "count", entry.entries.length.toString(),
+        "nodeIps", entry.nodeIps.join(","),
     ]);
     for (let i = 0; i < entry.entries.length; i++) {
         processAppendEntry(entry.entries[i]);
@@ -484,6 +546,7 @@ export function processAppendEntries(
         setCommitIndex(i);
         setLastApplied(i);
     }
+    setNodeIPs(entry.nodeIps);
 }
 
 export function processAppendEntry(entry: LogEntry): void {
@@ -519,8 +582,9 @@ export function sendAppendEntries(
     const ips = getNodeIPs();
     consensuswrap.LoggerDebug("diseminate entries...", ["nodeId", nodeId.toString(), "ips", JSON.stringify<Array<string>>(ips)])
     for (let i = 0; i < ips.length; i++) {
-        if (nodeId === i) continue;
-        sendAppendEntry(i, ips[i]);
+        // don't send to Leader or removed nodes
+        if (nodeId === i || ips[i].length == 0) continue;
+        sendAppendEntry(i, ips[i], ips);
     }
 }
 
@@ -539,7 +603,7 @@ function checkCommits(): void {
     const lastLogIndex = getLastLogIndex();
     const currentNodeId = getCurrentNodeId();
     const nextIndexPerNode = getNextIndexArray();
-    const len = nextIndexPerNode.length;
+    const len = getNodeCount();
     let nextCommit = lastCommitIndex + 1;
 
     consensuswrap.LoggerDebug("committing diseminated blocks...", ["lastCommitIndex", lastCommitIndex.toString(), "lastSaved", lastLogIndex.toString(), "blocksToCommit", (lastLogIndex >= nextCommit).toString()])
@@ -547,7 +611,7 @@ function checkCommits(): void {
     if (lastLogIndex < nextCommit) {
         return;
     }
-    const majority = i64(f64.floor(f64(len) / 2) + 1);
+    const majority = getMajority(len);
     let count = 1; // leader
     for (let i = 0; i < len; i++) {
         // next index is the next index to send, so we use >
@@ -575,10 +639,17 @@ function checkCommits(): void {
 export function sendAppendEntry(
     nodeId: i32,
     nodeIp: string,
+    nodeIps: string[],
 ): void {
     const nextIndexPerNode = getNextIndexArray();
     const nextIndex = nextIndexPerNode.at(nodeId);
-    const lastIndex = getLastLogIndex();
+    let lastIndex = getLastLogIndex();
+    // TODO state sync & snapshotting
+    // right now, don't send more than STATE_SYNC_BATCH blocks at a time
+    if ((lastIndex - nextIndex) > STATE_SYNC_BATCH) {
+        lastIndex = nextIndex + STATE_SYNC_BATCH;
+    }
+
     const entries: Array<LogEntry> = [];
     for (let i = nextIndex; i <= lastIndex; i++) {
         const entry = getLogEntry(i);
@@ -600,6 +671,7 @@ export function sendAppendEntry(
         previousEntry.termId,
         entries,
         lastCommitIndex,
+        nodeIps,
     )
     const datastr = JSON.stringify<AppendEntry>(data);
 
@@ -899,6 +971,25 @@ function appendLogInternalVerified(processReq: typestnd.RequestProcessProposal, 
     appendLogEntry(entry);
 }
 
+function getMajority(count: i32): i64 {
+    return i64(f64.floor(f64(count) / 2) + 1)
+}
+
+function getNodeCount(): i32 {
+    const ips = getNodeIPs();
+    return getNodeCountInternal(ips);
+}
+
+function getNodeCountInternal(ips: string[]): i32 {
+    let count = 0;
+    for (let i = 0; i < ips.length; i++) {
+        if (ips[i].length > 0) {
+            count += 1;
+        }
+    }
+    return count;
+}
+
 export function appendLogEntry(
     entry: LogEntry,
 ): void {
@@ -1038,6 +1129,11 @@ function getNodeIPs(): Array<string> {
     if (valuestr === "") return value;
     value = JSON.parse<Array<string>>(valuestr);
     return value;
+}
+
+function setNodeIPs(ips: Array<string>): void {
+    const valuestr = JSON.stringify<Array<string>>(ips);
+    storage.setContextValue(NODE_IPS, valuestr);
 }
 
 function getNextIndexArray(): Array<i64> {

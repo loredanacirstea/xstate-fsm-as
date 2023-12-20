@@ -197,22 +197,13 @@ export const machine = createMachine(
                       },
                     ],
                   },
-                  heartbeatResponse: {
-                    target: "active",
-                    actions: [
-                      {
-                        type: "updateNextIndex",
-                      },
-                      {
-                        type: "updateMatchIndex",
-                      },
-                      {
-                        type: "commitTransaction",
-                      },
-                    ],
-                  },
                   start: {
                     target: "active",
+                  },
+                  nodeUpdate: {
+                    actions: {
+                      type: "updateNode",
+                    },
                   },
                 },
               },
@@ -232,16 +223,20 @@ export const machine = createMachine(
     types: {
       events: {} as
         | { type: "" }
+        | { type: "reset" }
         | { type: "setup"; nodeIPs: string; currentNodeId: string }
         | { type: "start" }
         | { type: "newChange"; transaction: string }
         | { type: "setupNode"; nodeIPs: string; currentNodeId: string; initChainSetup: string }
         | { type: "initialize" }
+        | { type: "nodeUpdate"; ip: string; index: string; removed: string }
         | { type: "newTransaction"; transaction: string }
+        | { type: "nodeListUpdate"; ips: string }
         | {
             type: "receiveHeartbeat";
             termId: string;
             entries: string;
+            nodeIps: string;
             leaderId: string;
             prevLogTerm: string;
             leaderCommit: string;
@@ -254,8 +249,7 @@ export const machine = createMachine(
             candidateId: string;
             lastLogTerm: string;
             lastLogIndex: string;
-          }
-        | { type: "reset" },
+          },
       context: {} as {
         log: string;
         nodeIPs: string;
@@ -282,6 +276,7 @@ export const machine = createMachine(
     actions: {
       setRandomElectionTimeout: ({ context, event }) => {},
       cancelActiveIntervals: ({ context, event }) => {},
+      forwardTxsToLeader: ({ context, event }) => {},
       initializeNextIndex: ({ context, event }) => {},
       initializeMatchIndex: ({ context, event }) => {},
       sendAppendEntries: ({ context, event }) => {},
@@ -292,14 +287,11 @@ export const machine = createMachine(
       sendVoteRequests: ({ context, event }) => {},
       addToMempool: ({ context, event }) => {},
       sendNewTransactionResponse: ({ context, event }) => {},
-      updateNextIndex: ({ context, event }) => {},
-      updateMatchIndex: ({ context, event }) => {},
-      commitTransaction: ({ context, event }) => {},
       processAppendEntries: ({ context, event }) => {},
       sendHeartbeatResponse: ({ context, event }) => {},
       setupNode: ({ context, event }) => {},
       vote: ({ context, event }) => {},
-      forwardTxsToLeader: ({ context, event }) => {},
+      updateNode: ({ context, event }) => {},
     },
     actors: {},
     guards: {

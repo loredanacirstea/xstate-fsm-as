@@ -788,22 +788,13 @@ export const RAFT_Full = {
                       },
                     ],
                   },
-                  heartbeatResponse: {
-                    target: "active",
-                    actions: [
-                      {
-                        type: "updateNextIndex",
-                      },
-                      {
-                        type: "updateMatchIndex",
-                      },
-                      {
-                        type: "commitTransaction",
-                      },
-                    ],
-                  },
                   start: {
                     target: "active",
+                  },
+                  nodeUpdate: {
+                    actions: {
+                      type: "updateNode",
+                    },
                   },
                 },
               },
