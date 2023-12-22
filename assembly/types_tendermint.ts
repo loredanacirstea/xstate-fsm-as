@@ -1,4 +1,5 @@
 import { JSON } from "json-as/assembly";
+import {HexString, Base64String, Bech32String} from './types';
 
 // @ts-ignore
 @serializable
@@ -26,8 +27,8 @@ export class Version {
 @serializable
 export class PartSetHeader {
     total: u32
-    hash: string // base64
-    constructor(total: u32, hash: string) {
+    hash: HexString
+    constructor(total: u32, hash: HexString) {
         this.total = total;
         this.hash = hash;
     }
@@ -37,13 +38,13 @@ export class PartSetHeader {
 @serializable
 export class BlockID {
     // block hash
-    hash: string // base64
+    hash: HexString
     // PartSet containing parts of a serialized block. is the form in which the block is gossipped to peers.
     // PartSetHeader:
     // 1. total number of parts
     // 2. first 6 bytes of the hash
     parts: PartSetHeader
-    constructor(hash: string, parts: PartSetHeader) {
+    constructor(hash: HexString, parts: PartSetHeader) {
         this.hash = hash;
         this.parts = parts;
     }
@@ -63,29 +64,29 @@ export class Header {
 
     // hashes of block data
     // commit from validators from the last block
-    last_commit_hash: string // base64
+    last_commit_hash: HexString
     // transactions
-    data_hash: string // base64       // transactions
+    data_hash: HexString // transactions
 
     // hashes from the app output from the prev block
     // validators for the current block
-    validators_hash: string // base64
+    validators_hash: HexString
     // validators for the next block
-    next_validators_hash: string // base64
+    next_validators_hash: HexString
     // consensus params for current block
-    consensus_hash: string // base64
+    consensus_hash: HexString
     // state after txs from the previous block
-    app_hash: string // base64
+    app_hash: HexString
     // root hash of all results from the txs from the previous block
     // see `deterministicExecTxResult` to understand which parts of a tx is hashed into here
-    last_results_hash: string // base64
+    last_results_hash: HexString
 
     // consensus info
     // evidence included in the block
-    evidence_hash: string // base64
+    evidence_hash: HexString
     // original proposer of the block
     proposer_address: string // hex
-    constructor(version: VersionConsensus, chain_id: string, height: i64, time: string, last_block_id: BlockID, last_commit_hash: string, data_hash: string, validators_hash: string, next_validators_hash: string, consensus_hash: string, app_hash: string, last_results_hash: string, evidence_hash: string, proposer_address: string) {
+    constructor(version: VersionConsensus, chain_id: string, height: i64, time: string, last_block_id: BlockID, last_commit_hash: HexString, data_hash: HexString, validators_hash: HexString, next_validators_hash: HexString, consensus_hash: HexString, app_hash: HexString, last_results_hash: HexString, evidence_hash: HexString, proposer_address: string) {
         this.version = version;
         this.chain_id = chain_id;
         this.height = height;
@@ -109,12 +110,12 @@ export class ExtendedVoteInfo {
 	// The validator that sent the vote.
 	validator: Validator;
 	// Non-deterministic extension provided by the sending validator's application.
-	vote_extension: string; // base64
+	vote_extension: Base64String;
 	// Vote extension signature created by CometBFT
-	extension_signature: string; // base64
+	extension_signature: Base64String;
 	// block_id_flag indicates whether the validator voted for a block, nil, or did not vote at all
 	block_id_flag: BlockIDFlag;
-    constructor(validator: Validator, voteExtension: string, extensionSignature: string, blockIdFlag: BlockIDFlag) {
+    constructor(validator: Validator, voteExtension: Base64String, extensionSignature: Base64String, blockIdFlag: BlockIDFlag) {
         this.validator = validator;
         this.vote_extension = voteExtension;
         this.extension_signature = extensionSignature;
@@ -140,10 +141,10 @@ export class ExtendedCommitInfo {
 @serializable
 export class CommitSig {
     block_id_flag: BlockIDFlag
-    validator_address: string // hex
+    validator_address: HexString
     timestamp: string
-    signature: string // base64
-    constructor(block_id_flag: BlockIDFlag, validator_address: string, timestamp: string, signature: string) {
+    signature: Base64String
+    constructor(block_id_flag: BlockIDFlag, validator_address: HexString, timestamp: string, signature: Base64String) {
         this.block_id_flag = block_id_flag;
         this.validator_address = validator_address;
         this.timestamp = timestamp;
@@ -187,14 +188,14 @@ export class Evidence {
 export class RequestPrepareProposal {
     // the modified transactions cannot exceed this size.
 	max_tx_bytes: i64;
-	txs: Array<string>; // base64
+	txs: Array<Base64String>;
 	local_last_commit: ExtendedCommitInfo;
 	misbehavior: Misbehavior[];
 	height: i64;
 	time: string;
-	next_validators_hash: string; // base64
-	proposer_address: string; // base64
-    constructor(maxTxBytes: i64, txs: Array<string>, localLastCommit: ExtendedCommitInfo, misbehavior: Misbehavior[], height: i64, time: string, nextValidatorsHash: string, proposerAddress: string) {
+	next_validators_hash: Base64String;
+	proposer_address: Base64String;
+    constructor(maxTxBytes: i64, txs: Array<Base64String>, localLastCommit: ExtendedCommitInfo, misbehavior: Misbehavior[], height: i64, time: string, nextValidatorsHash: Base64String, proposerAddress: Base64String) {
         this.max_tx_bytes = maxTxBytes;
         this.txs = txs;
         this.local_last_commit = localLastCommit;
@@ -209,8 +210,8 @@ export class RequestPrepareProposal {
 // @ts-ignore
 @serializable
 export class ResponsePrepareProposal {
-    txs: Array<string> // base64
-    constructor(txs: Array<string>) {
+    txs: Array<Base64String>
+    constructor(txs: Array<Base64String>) {
         this.txs = txs;
     }
 }
@@ -227,9 +228,9 @@ export enum BlockIDFlag {
 // @ts-ignore
 @serializable
 export class Validator {
-	address: string // bech32
+	address: Bech32String
 	power: i64
-    constructor(address: string, power: i64) {
+    constructor(address: Bech32String, power: i64) {
         this.address = address
         this.power = power
     }
@@ -260,18 +261,18 @@ export class CommitInfo {
 // @ts-ignore
 @serializable
 export class RequestProcessProposal {
-    txs: Array<string> // base64 encoded
+    txs: Array<Base64String>
 	proposed_last_commit: CommitInfo
 	misbehavior: Misbehavior[]
     // hash is the merkle root hash of the fields of the proposed block
     // block.Header.Hash()
-	hash: string // base64
+	hash: Base64String
 	height: i64
 	time: string
-	next_validators_hash: string // base64
+	next_validators_hash: Base64String
     // address of the public key of the original proposer of the block.
-	proposer_address: string // base64
-    constructor(txs: Array<string>, proposedLastCommit: CommitInfo, misbehavior: Misbehavior[], hash: string, height: i64, time: string, nextValidatorsHash: string, proposerAddress: string) {
+	proposer_address: Base64String
+    constructor(txs: Array<Base64String>, proposedLastCommit: CommitInfo, misbehavior: Misbehavior[], hash: Base64String, height: i64, time: string, nextValidatorsHash: Base64String, proposerAddress: Base64String) {
         this.txs = txs;
         this.proposed_last_commit = proposedLastCommit;
         this.misbehavior = misbehavior;
@@ -303,15 +304,15 @@ export class ResponseProcessProposal {
 // @ts-ignore
 @serializable
 export class RequestFinalizeBlock {
-    txs: Array<string> // base64 encoded
+    txs: Array<Base64String>
 	decided_last_commit: CommitInfo
 	misbehavior: Misbehavior[]
-	hash: string // base64 encoded
+	hash: Base64String
 	height: i64
 	time: string
-	next_validators_hash: string // base64 encoded
-	proposer_address: string // base64 encoded
-    constructor(txs: Array<string>, decidedLastCommit: CommitInfo, misbehavior: Misbehavior[], hash: string, height: i64, time: string, nextValidatorsHash: string, proposerAddress: string) {
+	next_validators_hash: Base64String
+	proposer_address: Base64String
+    constructor(txs: Array<Base64String>, decidedLastCommit: CommitInfo, misbehavior: Misbehavior[], hash: Base64String, height: i64, time: string, nextValidatorsHash: Base64String, proposerAddress: Base64String) {
         this.txs = txs;
         this.decided_last_commit = decidedLastCommit;
         this.misbehavior = misbehavior;
@@ -351,14 +352,14 @@ export class Event {
 @serializable
 export class ExecTxResult { // same as ResponseCheckTx
     code: u32
-	data: string // base64
+	data: Base64String
 	log: string
 	info: string
 	gas_wanted: i64
 	gas_used: i64
 	events: Event[]
 	codespace: string
-    constructor(code: u32, data: string, log: string, info: string, gas_wanted: i64, gas_used: i64, events: Event[], codespace: string) {
+    constructor(code: u32, data: Base64String, log: string, info: string, gas_wanted: i64, gas_used: i64, events: Event[], codespace: string) {
         this.code = code;
         this.data = data;
         this.log = log;
@@ -384,11 +385,11 @@ export class ValidatorUpdate {
 // @ts-ignore
 @serializable
 export class ValidatorInfo {
-    address: string // hex encoded
+    address: HexString
     pub_key: string // crypto.PubKey
     voting_power: i64
     proposer_priority: i64
-    constructor(address: string, pub_key: string, voting_power: i64, proposer_priority: i64) {
+    constructor(address: HexString, pub_key: string, voting_power: i64, proposer_priority: i64) {
         this.address = address;
         this.pub_key = pub_key;
         this.voting_power = voting_power;
@@ -487,8 +488,8 @@ export class ResponseFinalizeBlock {
 	tx_results: ExecTxResult[]
 	validator_updates: ValidatorUpdate[]
 	consensus_param_updates: ConsensusParams
-	app_hash: string // base64
-    constructor(events: Event[], txResults: ExecTxResult[], validatorUpdates: ValidatorUpdate[], consensusParamUpdates: ConsensusParams, appHash: string) {
+	app_hash: Base64String
+    constructor(events: Event[], txResults: ExecTxResult[], validatorUpdates: ValidatorUpdate[], consensusParamUpdates: ConsensusParams, appHash: Base64String) {
         this.events = events;
         this.tx_results = txResults;
         this.validator_updates = validatorUpdates;
@@ -516,9 +517,9 @@ export enum CheckTxType {
 // @ts-ignore
 @serializable
 export class RequestCheckTx {
-    tx: string; // base64
+    tx: Base64String;
 	type: CheckTxType
-    constructor(tx: string, type: CheckTxType) {
+    constructor(tx: Base64String, type: CheckTxType) {
         this.tx = tx;
         this.type = type;
     }
@@ -558,9 +559,9 @@ export class Transaction {
 export class TxResult {
 	height: i64
 	index: u32
-	tx: string // base64
+	tx: Base64String
 	result: ExecTxResult
-    constructor(height: i64, index: u32, tx: string, result: ExecTxResult) {
+    constructor(height: i64, index: u32, tx: Base64String, result: ExecTxResult) {
         this.height = height;
         this.index = index;
         this.tx = tx;
@@ -586,9 +587,9 @@ export class RequestInitChain {
 	chain_id: string
 	consensus_params: ConsensusParams
 	validators: ValidatorUpdate[]
-	app_state_bytes: string // base64
+	app_state_bytes: Base64String
 	initial_height: i64
-    constructor(time: string, chain_id: string, consensus_params: ConsensusParams, validators: ValidatorUpdate[], app_state_bytes: string, initial_height: i64) {
+    constructor(time: string, chain_id: string, consensus_params: ConsensusParams, validators: ValidatorUpdate[], app_state_bytes: Base64String, initial_height: i64) {
         this.time = time
         this.chain_id = chain_id
         this.consensus_params = consensus_params
@@ -603,8 +604,8 @@ export class RequestInitChain {
 export class ResponseInitChain {
 	consensus_params: ConsensusParams
 	validators: ValidatorUpdate[]
-	app_hash: string
-    constructor(consensus_params: ConsensusParams, validators: ValidatorUpdate[], app_hash: string) {
+	app_hash: Base64String
+    constructor(consensus_params: ConsensusParams, validators: ValidatorUpdate[], app_hash: Base64String) {
         this.consensus_params = consensus_params
         this.validators = validators
         this.app_hash = app_hash
@@ -618,10 +619,10 @@ export class InitChainSetup {
     version: Version
 	consensus_params: ConsensusParams
 	validators: ValidatorInfo[]
-	app_hash: string
-    last_results_hash: string // base64
-    current_validator: string // hex
-    constructor(chain_id: string, version: Version, consensus_params: ConsensusParams, validators: ValidatorInfo[], app_hash: string, last_results_hash: string, current_validator: string) {
+	app_hash: Base64String
+    last_results_hash: Base64String
+    current_validator: HexString
+    constructor(chain_id: string, version: Version, consensus_params: ConsensusParams, validators: ValidatorInfo[], app_hash: Base64String, last_results_hash: Base64String, current_validator: HexString) {
         this.chain_id = chain_id
         this.version = version
         this.consensus_params = consensus_params
@@ -659,9 +660,9 @@ export class CurrentState {
 // @ts-ignore
 @serializable
 class MempoolBatch {
-    txs: string[];
+    txs: Base64String[];
     cummulatedGas: i64;
-    constructor(txs: string[] = [], cummulatedGas: i64 = 0) {
+    constructor(txs: Base64String[] = [], cummulatedGas: i64 = 0) {
         this.txs = txs;
         this.cummulatedGas = cummulatedGas;
     }
@@ -670,14 +671,14 @@ class MempoolBatch {
 // @ts-ignore
 @serializable
 export class Mempool {
-    txs: string[];
+    txs: Base64String[];
     gas: i32[];
-    constructor(txs: string[] = [], gas: i32[] = []) {
+    constructor(txs: Base64String[] = [], gas: i32[] = []) {
         this.txs = txs;
         this.gas = gas;
     }
 
-    add(tx: string, gas: i32): void {
+    add(tx: Base64String, gas: i32): void {
         this.gas = this.gas.concat([gas]);
         this.txs = this.txs.concat([tx]);
     }
@@ -701,12 +702,12 @@ export class Mempool {
         return batch;
     }
 
-    spliceTxs(limit: i32): string[] {
+    spliceTxs(limit: i32): Base64String[] {
         return this.txs.splice(0, limit);
     }
 }
 
 // 4 chars represent 3 bytes
-function base64Len(value: string): i32 {
+function base64Len(value: Base64String): i32 {
     return i32(Math.ceil(value.length / 4)) * 3;
 }

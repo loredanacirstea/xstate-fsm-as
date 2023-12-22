@@ -10,7 +10,7 @@ import {
   ActionParam,
   UpdateNodeResponse,
 } from './types';
-import { hexToUint8Array, revert, parseInt32, parseInt64, i32ToUint8ArrayBE, uint8ArrayToHex, i64ToUint8ArrayBE } from "./utils";
+import { hexToUint8Array, revert, parseInt32, parseInt64, i32ToUint8ArrayBE, uint8ArrayToHex, i64ToUint8ArrayBE, base64ToHex, hex64ToBase64 } from "./utils";
 import { LogEntry, TransactionResponse, AppendEntry, AppendEntryResponse, VoteResponse, VoteRequest } from "./types_raft";
 import * as typestnd from "./types_tendermint";
 import { LoggerDebug, LoggerError } from "./consensus";
@@ -134,6 +134,7 @@ export function registeredCheck(
     for (let i = 0; i < ips.length; i++) {
         // don't send to ourselves or to removed nodes
         if (i == nodeId || ips[i] == "") continue;
+        consensuswrap.LoggerInfo("register request", ["IP", ips[i]])
         const response = wasmxwrap.grpcRequest(ips[i], Uint8Array.wrap(contract), msgBase64);
         consensuswrap.LoggerInfo("register response", ["error", response.error, "data", response.data])
         if (response.error.length > 0 || response.data.length == 0) {
@@ -913,14 +914,14 @@ function startBlockProposal(txs: string[], cummulatedGas: i64, maxDataBytes: i64
         prepareReq.height,
         prepareReq.time,
         currentState.last_block_id,
-        getCommitHash(lastBlockCommit),
-        getTxsHash(prepareResp.txs),
-        nextValidatorsHash,
-        nextValidatorsHash,
-        getConsensusParamsHash(getConsensusParams()),
-        currentState.app_hash,
-        currentState.last_results_hash,
-        getEvidenceHash(evidence),
+        base64ToHex(getCommitHash(lastBlockCommit)),
+        base64ToHex(getTxsHash(prepareResp.txs)),
+        base64ToHex(nextValidatorsHash),
+        base64ToHex(nextValidatorsHash),
+        base64ToHex(getConsensusParamsHash(getConsensusParams())),
+        base64ToHex(currentState.app_hash),
+        base64ToHex(currentState.last_results_hash),
+        base64ToHex(getEvidenceHash(evidence)),
         prepareReq.proposer_address,
     );
     const hash = getHeaderHash(header);
@@ -1001,7 +1002,10 @@ function startBlockFinalizationInternal(entryobj: LogEntry): void {
     consensuswrap.LoggerDebug("updating current state...", [])
     const state = getCurrentState();
     state.app_hash = finalizeResp.app_hash;
-    state.last_block_id = new typestnd.BlockID(finalizeReq.hash, new typestnd.PartSetHeader(0, finalizeReq.hash.slice(0, 8)));
+    state.last_block_id = new typestnd.BlockID(
+        base64ToHex(finalizeReq.hash),
+        new typestnd.PartSetHeader(0, base64ToHex(finalizeReq.hash.slice(0, 8)))
+    );
     state.last_commit_hash = last_commit_hash
     state.last_results_hash = last_results_hash
     setCurrentState(state);
@@ -1443,15 +1447,15 @@ function getHeaderHash(header: typestnd.Header): string {
         encodeBase64(i64ToUint8ArrayBE(header.height)),
         encodeBase64(Uint8Array.wrap(String.UTF8.encode(header.time))),
         encodeBase64(Uint8Array.wrap(blockidbz)),
-        header.last_commit_hash,
-        header.data_hash,
-        header.validators_hash,
-        header.next_validators_hash,
-        header.consensus_hash,
-        header.app_hash,
-        header.last_results_hash,
-        header.evidence_hash,
-        header.proposer_address, // TODO transform hex to base64
+        hex64ToBase64(header.last_commit_hash),
+        hex64ToBase64(header.data_hash),
+        hex64ToBase64(header.validators_hash),
+        hex64ToBase64(header.next_validators_hash),
+        hex64ToBase64(header.consensus_hash),
+        hex64ToBase64(header.app_hash),
+        hex64ToBase64(header.last_results_hash),
+        hex64ToBase64(header.evidence_hash),
+        hex64ToBase64(header.proposer_address), // TODO transform hex to base64
     ]
     return consensuswrap.MerkleHash(data);
 }

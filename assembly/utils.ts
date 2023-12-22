@@ -1,5 +1,7 @@
 import * as wasmx from './wasmx';
 import * as consensuswrap from './consensus_wrap';
+import { Base64String, HexString } from './types';
+import { encode as encodeBase64, decode as decodeBase64 } from "as-base64/assembly";
 
 export function arrayBufferToU8Array(buffer: ArrayBuffer): u8[] {
     const length = buffer.byteLength;
@@ -75,4 +77,12 @@ export function parseInt64(value: string): i64 {
 
 export function getAddressHex(addrbuf: ArrayBuffer): string {
     return uint8ArrayToHex(Uint8Array.wrap(addrbuf));
+}
+
+export function base64ToHex(value: Base64String): HexString {
+    return uint8ArrayToHex(decodeBase64(value))
+}
+
+export function hex64ToBase64(value: HexString): Base64String {
+    return encodeBase64(hexToUint8Array(value))
 }

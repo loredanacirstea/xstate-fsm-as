@@ -1,5 +1,9 @@
 import { JSON } from "json-as/assembly";
 
+export type HexString = string;
+export type Base64String = string;
+export type Bech32String = string;
+
 // @ts-ignore
 @serializable
 export enum InterpreterStatus {
