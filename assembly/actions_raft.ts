@@ -985,7 +985,17 @@ function startBlockFinalizationInternal(entryobj: LogEntry): void {
         processReq.next_validators_hash,
         processReq.proposer_address,
     )
-    const finalizeResp = consensuswrap.FinalizeBlock(finalizeReq);
+    const respWrap = consensuswrap.FinalizeBlock(finalizeReq);
+    if (respWrap.error.length > 0) {
+        // TODO fixme
+        if (respWrap.error.includes("mismatch")) {
+
+        }
+    }
+    const finalizeResp = respWrap.data;
+    if (finalizeResp == null) {
+        return revert("FinalizeBlock response is null");
+    }
 
     // TODO save less info? (events tx_results)
     const resultstr = JSON.stringify<typestnd.ResponseFinalizeBlock>(finalizeResp);

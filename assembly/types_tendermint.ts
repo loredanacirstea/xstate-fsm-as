@@ -500,6 +500,17 @@ export class ResponseFinalizeBlock {
 
 // @ts-ignore
 @serializable
+export class ResponseWrap {
+    error: string
+    data: Base64String
+    constructor(error: string, data: Base64String) {
+        this.error = error
+        this.data = data
+    }
+}
+
+// @ts-ignore
+@serializable
 export class ResponseCommit {
 	retainHeight: i64;
     constructor(retainHeight: i64) {

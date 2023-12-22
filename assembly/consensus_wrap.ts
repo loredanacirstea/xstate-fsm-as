@@ -2,6 +2,7 @@ import { JSON } from "json-as/assembly";
 import { encode as encodeBase64, decode as decodeBase64 } from "as-base64/assembly";
 import * as consensus from './consensus';
 import {
+    ResponseWrap,
     RequestInitChain,
     RequestPrepareProposal,
     RequestProcessProposal,
@@ -10,6 +11,7 @@ import {
     ResponsePrepareProposal,
     ResponseProcessProposal,
     ResponseFinalizeBlock,
+    ResponseFinalizeBlockWrap,
     ResponseCommit,
     RequestCheckTx,
     ResponseCheckTx,
@@ -82,13 +84,18 @@ export function ProcessProposal(req: RequestProcessProposal): ResponseProcessPro
     return JSON.parse<ResponseProcessProposal>(respstr);
 }
 
-export function FinalizeBlock(req: RequestFinalizeBlock): ResponseFinalizeBlock {
+export function FinalizeBlock(req: RequestFinalizeBlock): ResponseFinalizeBlockWrap {
     const reqstr = JSON.stringify<RequestFinalizeBlock>(req);
     LoggerDebug("FinalizeBlock", ["request", reqstr]);
     const respbz = consensus.FinalizeBlock(String.UTF8.encode(reqstr));
     const respstr = String.UTF8.decode(respbz);
     LoggerDebug("FinalizeBlock", ["response", respstr]);
-    return JSON.parse<ResponseFinalizeBlock>(respstr);
+    const wrap = JSON.parse<ResponseWrap>(respstr);
+    const response = new ResponseFinalizeBlockWrap(wrap.error, null);
+    if (wrap.error.length == 0) {
+        response.data = JSON.parse<ResponseFinalizeBlock>(String.UTF8.decode(decodeBase64(wrap.data).buffer));
+    }
+    return response;
 }
 
 export function Commit(): ResponseCommit {
