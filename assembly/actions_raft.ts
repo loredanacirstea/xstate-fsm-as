@@ -987,15 +987,17 @@ function startBlockFinalizationInternal(entryobj: LogEntry, retry: boolean): voi
     )
     let respWrap = consensuswrap.FinalizeBlock(finalizeReq);
     if (respWrap.error.length > 0 && !retry) {
+        // ERR invalid height: 3232; expected: 3233
         const mismatchErr = `expected: ${(finalizeReq.height + 1).toString()}`
         if (respWrap.error.includes("invalid height") && respWrap.error.includes(mismatchErr)) {
-            consensuswrap.LoggerInfo(`trying to rollback`, ["height", finalizeReq.height.toString()])
-            const err = consensuswrap.RollbackToVersion(finalizeReq.height);
+            const rollbackHeight = finalizeReq.height - 1;
+            consensuswrap.LoggerInfo(`trying to rollback`, ["height", rollbackHeight.toString()])
+            const err = consensuswrap.RollbackToVersion(rollbackHeight);
             if (err.length > 0) {
                 return revert(`consensus break: ${respWrap.error}; ${err}`);
             }
             // repeat FinalizeBlock
-            startBlockFinalizationInternal(entryobj, true);
+            return startBlockFinalizationInternal(entryobj, true);
         } else {
             return revert(respWrap.error)
         }
