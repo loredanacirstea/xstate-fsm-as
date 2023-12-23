@@ -956,7 +956,7 @@ function startBlockFinalizationLeader(index: i64): void {
     const currentTerm = getTermId();
 
     if (currentTerm == entryobj.termId) {
-        return startBlockFinalizationInternal(entryobj);
+        return startBlockFinalizationInternal(entryobj, false);
     } else {
         consensuswrap.LoggerError("entry has current term mismatch", ["nodeType", "Leader", "currentTerm", currentTerm.toString(), "entryTermId", entryobj.termId.toString()])
     }
@@ -969,10 +969,10 @@ function startBlockFinalizationFollower(index: i64): void {
     consensuswrap.LoggerDebug("start block finalization", ["height", index.toString(), "entry", entry])
 
     const entryobj = JSON.parse<LogEntry>(entry);
-    return startBlockFinalizationInternal(entryobj);
+    return startBlockFinalizationInternal(entryobj, false);
 }
 
-function startBlockFinalizationInternal(entryobj: LogEntry): void {
+function startBlockFinalizationInternal(entryobj: LogEntry, retry: boolean): void {
     const processReqStr = String.UTF8.decode(decodeBase64(entryobj.data).buffer);
     const processReq = JSON.parse<typestnd.RequestProcessProposal>(processReqStr);
     const finalizeReq = new typestnd.RequestFinalizeBlock(
@@ -985,11 +985,19 @@ function startBlockFinalizationInternal(entryobj: LogEntry): void {
         processReq.next_validators_hash,
         processReq.proposer_address,
     )
-    const respWrap = consensuswrap.FinalizeBlock(finalizeReq);
-    if (respWrap.error.length > 0) {
-        // TODO fixme
-        if (respWrap.error.includes("mismatch")) {
-
+    let respWrap = consensuswrap.FinalizeBlock(finalizeReq);
+    if (respWrap.error.length > 0 && !retry) {
+        const mismatchErr = `expected: ${(finalizeReq.height + 1).toString()}`
+        if (respWrap.error.includes("invalid height") && respWrap.error.includes(mismatchErr)) {
+            consensuswrap.LoggerInfo(`trying to rollback`, ["height", finalizeReq.height.toString()])
+            const err = consensuswrap.RollbackToVersion(finalizeReq.height);
+            if (err.length > 0) {
+                return revert(`consensus break: ${respWrap.error}; ${err}`);
+            }
+            // repeat FinalizeBlock
+            startBlockFinalizationInternal(entryobj, true);
+        } else {
+            return revert(respWrap.error)
         }
     }
     const finalizeResp = respWrap.data;

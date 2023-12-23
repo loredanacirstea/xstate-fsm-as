@@ -66,6 +66,15 @@ export function LoggerDebug(msg: string, parts: string[]): void {
     consensus.LoggerDebug(databz);
 }
 
+export function CheckTx(req: RequestCheckTx): ResponseCheckTx {
+    const reqstr = JSON.stringify<RequestCheckTx>(req);
+    LoggerDebug("CheckTx", ["request", reqstr]);
+    const respbz = consensus.CheckTx(String.UTF8.encode(reqstr));
+    const respstr = String.UTF8.decode(respbz);
+    LoggerDebug("CheckTx", ["response", respstr]);
+    return JSON.parse<ResponseCheckTx>(respstr);
+}
+
 export function PrepareProposal(req: RequestPrepareProposal): ResponsePrepareProposal {
     const reqstr = JSON.stringify<RequestPrepareProposal>(req);
     LoggerDebug("PrepareProposal", ["request", reqstr]);
@@ -106,11 +115,11 @@ export function Commit(): ResponseCommit {
     return JSON.parse<ResponseCommit>(respstr);
 }
 
-export function CheckTx(req: RequestCheckTx): ResponseCheckTx {
-    const reqstr = JSON.stringify<RequestCheckTx>(req);
-    LoggerDebug("CheckTx", ["request", reqstr]);
-    const respbz = consensus.CheckTx(String.UTF8.encode(reqstr));
-    const respstr = String.UTF8.decode(respbz);
-    LoggerDebug("CheckTx", ["response", respstr]);
-    return JSON.parse<ResponseCheckTx>(respstr);
+export function RollbackToVersion(height: i64): string {
+    LoggerDebug("RollbackToVersion", []);
+    const respbz = consensus.RollbackToVersion(height);
+    const errstr = String.UTF8.decode(respbz);
+    LoggerDebug("RollbackToVersion", ["err", errstr]);
+    return errstr;
 }
+
