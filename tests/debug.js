@@ -141,6 +141,10 @@ async function instantiate(module, imports = {}) {
         value = __liftBuffer(value >>> 0);
         return __lowerBuffer(__module1.ProcessProposal(value)) || __notnull();
       },
+      RollbackToVersion(height) {
+        // assembly/consensus/RollbackToVersion(i64) => ~lib/arraybuffer/ArrayBuffer
+        return __lowerBuffer(__module1.RollbackToVersion(height)) || __notnull();
+      },
       MerkleHash(value) {
         // assembly/consensus/MerkleHash(~lib/arraybuffer/ArrayBuffer) => ~lib/arraybuffer/ArrayBuffer
         value = __liftBuffer(value >>> 0);

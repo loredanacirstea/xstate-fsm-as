@@ -3,6 +3,17 @@ import {HexString, Base64String, Bech32String} from './types';
 
 // @ts-ignore
 @serializable
+export class ResponseWrap {
+    error: string
+    data: Base64String
+    constructor(error: string, data: Base64String) {
+        this.error = error
+        this.data = data
+    }
+}
+
+// @ts-ignore
+@serializable
 export class VersionConsensus {
     block: u64
     app: u64
@@ -495,6 +506,17 @@ export class ResponseFinalizeBlock {
         this.validator_updates = validatorUpdates;
         this.consensus_param_updates = consensusParamUpdates;
         this.app_hash = appHash;
+    }
+}
+
+// @ts-ignore
+@serializable
+export class ResponseFinalizeBlockWrap {
+    error: string
+    data: ResponseFinalizeBlock | null
+    constructor(error: string, data: ResponseFinalizeBlock | null) {
+        this.error = error
+        this.data = data
     }
 }
 
