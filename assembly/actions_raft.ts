@@ -404,7 +404,7 @@ export function sendVoteRequests(
     // iterate through the other nodes and send a VoteRequest
     const request = new VoteRequest(termId, candidateId, lastLogIndex, lastLogTerm);
     const ips = getNodeIPs();
-    consensuswrap.LoggerDebug("sending vote requests...", ["candidateId", candidateId.toString(), "termId", termId.toString(), "lastLogIndex", lastLogIndex.toString(), "lastLogTerm", lastLogTerm.toString(), "ips", JSON.stringify<Array<string>>(ips)])
+    consensuswrap.LoggerInfo("sending vote requests...", ["candidateId", candidateId.toString(), "termId", termId.toString(), "lastLogIndex", lastLogIndex.toString(), "lastLogTerm", lastLogTerm.toString(), "ips", JSON.stringify<Array<string>>(ips)])
     for (let i = 0; i < ips.length; i++) {
         // don't send to ourselves or to removed nodes
         if (candidateId === i || ips[i].length == 0) continue;
@@ -471,6 +471,7 @@ function voteInternal(termId: i32, candidateId: i32, lastLogIndex: i64, lastLogT
         setTermId(termId);
         setVotedFor(candidateId);
         response = new VoteResponse(termId, true);
+        consensuswrap.LoggerInfo("voting for Candidate", ["candidateId", candidateId.toString(), "termId", termId.toString()])
     } else {
         // if we already voted, we do not grant a new vote
         if (hasVotedFor()) {
@@ -483,6 +484,7 @@ function voteInternal(termId: i32, candidateId: i32, lastLogIndex: i64, lastLogT
                 response = new VoteResponse(mytermId, false);
             } else {
                 setVotedFor(candidateId);
+                consensuswrap.LoggerInfo("voting for Candidate", ["candidateId", candidateId.toString(), "termId", termId.toString()])
             }
         }
     }
