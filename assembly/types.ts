@@ -615,13 +615,3 @@ export class CallResponse {
   }
 }
 
-// @ts-ignore
-@serializable
-export class UpdateNodeResponse {
-  nodeIPs: string[]
-  nodeId: i32
-  constructor(nodeIPs: string[], nodeId: i32) {
-    this.nodeIPs = nodeIPs
-    this.nodeId = nodeId
-  }
-}

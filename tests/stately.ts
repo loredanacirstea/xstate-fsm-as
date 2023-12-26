@@ -232,7 +232,7 @@ export const machine = createMachine(
         | { type: "newChange"; transaction: string }
         | { type: "setupNode"; nodeIPs: string; currentNodeId: string; initChainSetup: string }
         | { type: "initialize" }
-        | { type: "nodeUpdate"; ip: string; index: string; removed: string }
+        | { type: "nodeUpdate"; ip: string; index: string; removed: string; signature: string }
         | { type: "newTransaction"; transaction: string }
         | { type: "nodeListUpdate"; ips: string }
         | {
@@ -244,6 +244,7 @@ export const machine = createMachine(
             prevLogTerm: string;
             leaderCommit: string;
             prevLogIndex: string;
+            signature: string;
           }
         | { type: "heartbeatResponse"; term: string; success: string }
         | {
@@ -252,6 +253,7 @@ export const machine = createMachine(
             candidateId: string;
             lastLogTerm: string;
             lastLogIndex: string;
+            signature: string;
           },
       context: {} as {
         log: string;
@@ -280,6 +282,7 @@ export const machine = createMachine(
       registeredCheck: ({ context, event }) => {},
       setRandomElectionTimeout: ({ context, event }) => {},
       cancelActiveIntervals: ({ context, event }) => {},
+      forwardTxsToLeader: ({ context, event }) => {},
       initializeNextIndex: ({ context, event }) => {},
       initializeMatchIndex: ({ context, event }) => {},
       sendAppendEntries: ({ context, event }) => {},
@@ -295,7 +298,6 @@ export const machine = createMachine(
       setupNode: ({ context, event }) => {},
       vote: ({ context, event }) => {},
       updateNodeAndReturn: ({ context, event }) => {},
-      forwardTxsToLeader: ({ context, event }) => {},
     },
     actors: {},
     guards: {

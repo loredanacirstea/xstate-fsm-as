@@ -397,7 +397,7 @@ export class ValidatorUpdate {
 @serializable
 export class ValidatorInfo {
     address: HexString
-    pub_key: string // crypto.PubKey
+    pub_key: Base64String // crypto.PubKey
     voting_power: i64
     proposer_priority: i64
     constructor(address: HexString, pub_key: string, voting_power: i64, proposer_priority: i64) {
@@ -643,15 +643,19 @@ export class InitChainSetup {
 	validators: ValidatorInfo[]
 	app_hash: Base64String
     last_results_hash: Base64String
-    current_validator: HexString
-    constructor(chain_id: string, version: Version, consensus_params: ConsensusParams, validators: ValidatorInfo[], app_hash: Base64String, last_results_hash: Base64String, current_validator: HexString) {
+    validator_address: HexString
+    validator_privkey: Base64String
+    validator_pubkey: Base64String
+    constructor(chain_id: string, version: Version, consensus_params: ConsensusParams, validators: ValidatorInfo[], app_hash: Base64String, last_results_hash: Base64String, validator_address: HexString, validator_privkey: Base64String, validator_pubkey: Base64String) {
         this.chain_id = chain_id
         this.version = version
         this.consensus_params = consensus_params
         this.validators = validators
         this.app_hash = app_hash
         this.last_results_hash = last_results_hash
-        this.current_validator = current_validator
+        this.validator_address = validator_address
+        this.validator_privkey = validator_privkey
+        this.validator_pubkey = validator_pubkey
     }
 }
 
@@ -667,15 +671,20 @@ export class CurrentState {
     last_commit_hash: string // base64
     // tx results hash
     last_results_hash: string // base64
-    current_validator: string // hex
-    constructor(chain_id: string, version: Version, app_hash: string, last_block_id: BlockID, last_commit_hash: string, last_results_hash: string, current_validator: string) {
+    validator_address: HexString
+    validator_privkey: Base64String
+    validator_pubkey: Base64String
+
+    constructor(chain_id: string, version: Version, app_hash: string, last_block_id: BlockID, last_commit_hash: string, last_results_hash: string, validator_address: HexString, validator_privkey: Base64String, validator_pubkey: Base64String) {
         this.chain_id = chain_id
         this.version = version
         this.app_hash = app_hash
         this.last_block_id = last_block_id
         this.last_commit_hash = last_commit_hash
         this.last_results_hash = last_results_hash
-        this.current_validator = current_validator
+        this.validator_address = validator_address
+        this.validator_privkey = validator_privkey
+        this.validator_pubkey = validator_pubkey
     }
 }
 

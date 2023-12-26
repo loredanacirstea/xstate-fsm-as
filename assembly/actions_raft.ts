@@ -1,18 +1,19 @@
 import { JSON } from "json-as/assembly";
-import { encode as encodeBase64, decode as decodeBase64 } from "as-base64/assembly";
+import { encode as encodeBase64, decode as decodeBase64, encode } from "as-base64/assembly";
 import * as wasmxwrap from './wasmx_wrap';
 import * as wasmx from './wasmx';
 import * as consensuswrap from './consensus_wrap';
+import * as consensus from './consensus';
 import * as storage from './storage';
 
 import {
   EventObject,
   ActionParam,
-  UpdateNodeResponse,
 } from './types';
 import { hexToUint8Array, revert, parseInt32, parseInt64, i32ToUint8ArrayBE, uint8ArrayToHex, i64ToUint8ArrayBE, base64ToHex, hex64ToBase64 } from "./utils";
-import { LogEntry, TransactionResponse, AppendEntry, AppendEntryResponse, VoteResponse, VoteRequest } from "./types_raft";
+import { LogEntry, TransactionResponse, AppendEntry, AppendEntryResponse, VoteResponse, VoteRequest, NodeUpdate, UpdateNodeResponse } from "./types_raft";
 import * as typestnd from "./types_tendermint";
+import { Base64String } from "./types";
 import { LoggerDebug, LoggerError } from "./consensus";
 
 // Docs: https://raft.github.io/raft.pdf
@@ -125,9 +126,21 @@ export function registeredCheck(
     // send updateNode to all ips except us
     const nodeId = getCurrentNodeId();
     const nodeIp = ips[nodeId];
-    const msgstr = `{"run":{"event":{"type":"nodeUpdate","params":[{"key": "ip","value":"${nodeIp}"},{"key": "index","value":"${nodeId}"},{"key": "removed","value":"0"}]}}}`
-    consensuswrap.LoggerInfo("register request", ["req", msgstr])
+    // TODO signature on protobuf encoding, not JSON
+    const currentState = getCurrentState();
+    // TODO voting_power & proposer_priority
+    const validatorInfo = new typestnd.ValidatorInfo(currentState.validator_address, currentState.validator_pubkey, 0, 0);
+    const validatorInfoStr = encodeBase64(Uint8Array.wrap(String.UTF8.encode(JSON.stringify<typestnd.ValidatorInfo>(validatorInfo))))
+    const updateMsg = new NodeUpdate(nodeIp, nodeId, 0, validatorInfoStr);
+    const updateMsgStr = JSON.stringify<NodeUpdate>(updateMsg);
+    const signature = signMessage(updateMsgStr);
+
+    // const msgstr = `{"run":{"event":{"type":"nodeUpdate","params":[{"key": "ip","value":"${updateMsg.ip.toString()}"},{"key": "index","value":"${updateMsg.index.toString()}"},{"key": "removed","value":"0"},{"key": "signature","value":"${signature}"}]}}}`
+    const dataBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(updateMsgStr)));
+    const msgstr = `{"run":{"event":{"type":"nodeUpdate","params":[{"key": "entry","value":"${dataBase64}"},{"key": "signature","value":"${signature}"}]}}}`
     const msgBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(msgstr)));
+    consensuswrap.LoggerInfo("register request", ["req", msgstr])
+
     // we send the request to the same contract
     const contract = wasmx.getAddress();
 
@@ -155,57 +168,69 @@ export function updateNodeAndReturn(
     params: ActionParam[],
     event: EventObject,
 ): void {
-    let ip: string = "";
-    let indexstr: string = "";
-    let removedstr: string = "";
+    let entryBase64: string = "";
+    let signature: string = "";
     for (let i = 0; i < event.params.length; i++) {
-        if (event.params[i].key === "ip") {
-            ip = event.params[i].value;
+        if (event.params[i].key === "entry") {
+            entryBase64 = event.params[i].value;
             continue;
         }
-        if (event.params[i].key === "index") {
-            indexstr = event.params[i].value;
-            continue;
-        }
-        if (event.params[i].key === "removed") {
-            removedstr = event.params[i].value;
+        if (event.params[i].key === "signature") {
+            signature = event.params[i].value;
             continue;
         }
     }
-    if (ip === "") {
-        revert("update node: empty ip");
+    if (entryBase64 === "") {
+        revert("vote: empty entry");
     }
-    if (removedstr === "") {
-        revert("update node: empty removed");
+    if (signature === "") {
+        revert("vote: empty signature");
     }
-    const removed = removedstr == "1";
-    if (removed) {
-        if (indexstr === "") {
-            revert("update node: empty index");
-        }
-    }
-    const index = parseInt32(indexstr);
+    const entryStr = String.UTF8.decode(decodeBase64(entryBase64).buffer);
+    let entry: NodeUpdate = JSON.parse<NodeUpdate>(entryStr);
+
     const ips = getNodeIPs();
-    if (removed) {
+    // removed
+    if (entry.type == 0) {
         // idempotent
-        ips[index] = "";
-    } else {
-        // make it idempotent & don't add same ip multiple times
-        if (ips.includes(ip)) {
-            consensuswrap.LoggerDebug("ip already included", ["ip", ip])
+        ips[entry.index] = "";
+    } else if (entry.type == 1) {
+        if (entry.validator_info == "") {
+            consensuswrap.LoggerError("validator info missing from node update", ["ip", entry.ip])
             return;
         }
+        // make it idempotent & don't add same ip multiple times
+        if (ips.includes(entry.ip)) {
+            consensuswrap.LoggerDebug("ip already included", ["ip", entry.ip])
+            return;
+        }
+        const validatorInfo = JSON.parse<typestnd.ValidatorInfo>(String.UTF8.decode(decodeBase64(entry.validator_info).buffer))
         const newindex = ips.length;
-        ips.push(ip);
+        ips.push(entry.ip);
         const nextIndexes = getNextIndexArray();
         const matchIndexes = getMatchIndexArray();
         nextIndexes.push(LOG_START + 1);
         matchIndexes.push(LOG_START);
         setNextIndexArray(nextIndexes);
         setMatchIndexArray(matchIndexes);
+        const validators = getValidators();
+        validators.push(validatorInfo);
+        setValidators(validators);
         const response = new UpdateNodeResponse(ips, newindex);
+        entry.index = newindex;
         wasmx.setReturnData(String.UTF8.encode(JSON.stringify<UpdateNodeResponse>(response)));
+    } else {
+        // just update the ip
+        ips[entry.index] = entry.ip;
     }
+
+    // verify signature
+    const isSender = verifyMessage(entry.index, signature, entryStr);
+    if (!isSender) {
+        consensuswrap.LoggerError("signature verification failed", ["nodeIndex", entry.index.toString(), "nodeIp", entry.ip]);
+        return;
+    }
+
     consensuswrap.LoggerInfo("node updates", ["ips", ips.join(",")])
     setNodeIPs(ips);
 }
@@ -330,41 +355,34 @@ export function vote(
     params: ActionParam[],
     event: EventObject,
 ): void {
-    let termId: i32 = 0;
-    let candidateId: i32 = 0;
-    let lastLogIndex: i64 = 0;
-    let lastLogTerm: i32 = 0;
+    let entryBase64: string = "";
+    let signature: string = "";
     for (let i = 0; i < event.params.length; i++) {
-        if (event.params[i].key === "termId") {
-            if (event.params[i].value === "") {
-                revert("no termId found");
-            }
-            termId = parseInt32(event.params[i].value);
+        if (event.params[i].key === "entry") {
+            entryBase64 = event.params[i].value;
             continue;
         }
-        if (event.params[i].key === "candidateId") {
-            if (event.params[i].value === "") {
-                revert("no candidateId found");
-            }
-            candidateId = parseInt32(event.params[i].value);
-            continue;
-        }
-        if (event.params[i].key === "lastLogIndex") {
-            if (event.params[i].value === "") {
-                revert("no lastLogIndex found");
-            }
-            lastLogIndex = parseInt64(event.params[i].value);
-            continue;
-        }
-        if (event.params[i].key === "lastLogTerm") {
-            if (event.params[i].value === "") {
-                revert("no lastLogTerm found");
-            }
-            lastLogTerm = parseInt32(event.params[i].value);
+        if (event.params[i].key === "signature") {
+            signature = event.params[i].value;
             continue;
         }
     }
-    voteInternal(termId, candidateId, lastLogIndex, lastLogTerm);
+    if (entryBase64 === "") {
+        revert("vote: empty entry");
+    }
+    if (signature === "") {
+        revert("vote: empty signature");
+    }
+    const entryStr = String.UTF8.decode(decodeBase64(entryBase64).buffer);
+    let entry: VoteRequest = JSON.parse<VoteRequest>(entryStr);
+    // verify signature
+    const isSender = verifyMessage(entry.candidateId, signature, entryStr);
+    if (!isSender) {
+        consensuswrap.LoggerError("signature verification failed for VoteRequest", ["candidateId", entry.candidateId.toString(), "termId", entry.termId.toString()]);
+        return;
+    }
+
+    voteInternal(entry.termId, entry.candidateId, entry.lastLogIndex, entry.lastLogTerm);
 }
 
 export function incrementCurrentTerm(
@@ -430,13 +448,16 @@ export function isVotedLeader(
 
 function sendVoteRequest(nodeId: i32, nodeIp: string, request: VoteRequest, termId: i32): void {
     const datastr = JSON.stringify<VoteRequest>(request);
+    const signature = signMessage(datastr);
 
-    const msgstr = `{"run":{"event":{"type":"receiveVoteRequest","params":[{"key":"termId","value":"${request.termId.toString()}"},{"key":"candidateId","value":"${request.candidateId.toString()}"},{"key":"lastLogIndex","value":"${request.lastLogIndex.toString()}"},{"key":"lastLogTerm","value":"${request.lastLogTerm.toString()}"}]}}}`
+    // const msgstr = `{"run":{"event":{"type":"receiveVoteRequest","params":[{"key":"termId","value":"${request.termId.toString()}"},{"key":"candidateId","value":"${request.candidateId.toString()}"},{"key":"lastLogIndex","value":"${request.lastLogIndex.toString()}"},{"key":"lastLogTerm","value":"${request.lastLogTerm.toString()}"}]}}}`
+    const dataBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(datastr)));
+    const msgstr = `{"run":{"event":{"type":"receiveVoteRequest","params":[{"key": "entry","value":"${dataBase64}"},{"key": "signature","value":"${signature}"}]}}}`
+    const msgBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(msgstr)));
 
-    const dataBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(msgstr)));
     const contract = wasmx.getAddress();
     consensuswrap.LoggerDebug("sending vote request", ["nodeId", nodeId.toString(), "nodeIp", nodeIp, "termId", termId.toString(), "data", datastr])
-    const response = wasmxwrap.grpcRequest(nodeIp, Uint8Array.wrap(contract), dataBase64);
+    const response = wasmxwrap.grpcRequest(nodeIp, Uint8Array.wrap(contract), msgBase64);
     consensuswrap.LoggerDebug("vote request response", ["nodeId", nodeId.toString(), "nodeIp", nodeIp, "termId", termId.toString(), "data", response.data, "error", response.error])
     if (response.error.length > 0 || response.data.length == 0) {
         return
@@ -561,7 +582,9 @@ function initChain(req: typestnd.InitChainSetup): void {
         emptyBlockId,
         last_commit_hash,
         req.last_results_hash,
-        req.current_validator,
+        req.validator_address,
+        req.validator_privkey,
+        req.validator_pubkey,
     );
     setConsensusParams(req.consensus_params);
     setValidators(req.validators);
@@ -579,7 +602,24 @@ export function processAppendEntries(
     // we need to run ProcessProposal on each block
     // and then FinalizeBlock & Commit
     // TODO we also look at termId, as we might need to rollback changes in case of a network split
-    let entryBase64: string = event.params[0].value;
+    let entryBase64: string = "";
+    let signature: string = "";
+    for (let i = 0; i < event.params.length; i++) {
+        if (event.params[i].key === "entry") {
+            entryBase64 = event.params[i].value;
+            continue;
+        }
+        if (event.params[i].key === "signature") {
+            signature = event.params[i].value;
+            continue;
+        }
+    }
+    if (entryBase64 === "") {
+        revert("update node: empty entry");
+    }
+    if (signature === "") {
+        revert("update node: empty signature");
+    }
     const entryStr = String.UTF8.decode(decodeBase64(entryBase64).buffer);
     consensuswrap.LoggerDebug("received new entries", ["AppendEntry", entryStr.slice(0, MAX_LOGGED) + " [...]"]);
 
@@ -593,6 +633,14 @@ export function processAppendEntries(
         "count", entry.entries.length.toString(),
         "nodeIps", entry.nodeIps.join(","),
     ]);
+
+    // verify signature
+    const isSender = verifyMessage(entry.leaderId, signature, entryStr);
+    if (!isSender) {
+        consensuswrap.LoggerError("signature verification failed for AppendEntry", ["leaderId", entry.leaderId.toString(), "termId", entry.termId.toString()]);
+        return;
+    }
+
     for (let i = 0; i < entry.entries.length; i++) {
         processAppendEntry(entry.entries[i]);
     }
@@ -750,11 +798,10 @@ export function sendAppendEntry(
         nodeIps,
     )
     const datastr = JSON.stringify<AppendEntry>(data);
-
-    // const msgstr = `{"run":{"event":{"type":"receiveHeartbeat","params":[{"key":"termId","value":"${data.termId.toString()}"},{"key":"leaderId","value":"${data.leaderId.toString()}"},{"key":"prevLogIndex","value":"${data.prevLogIndex.toString()}"},{"key":"prevLogTerm","value":"${data.prevLogTerm.toString()}"},{"key":"entries","value":"${JSON.stringify<LogEntry[]>(data.entries)}"},{"key":"leaderCommit","value":"${data.leaderCommit.toString()}"}]}}}`
+    const signature = signMessage(datastr);
 
     const dataBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(datastr)));
-    const msgstr = `{"run":{"event":{"type":"receiveHeartbeat","params":[{"key": "entry","value":"${dataBase64}"}]}}}`
+    const msgstr = `{"run":{"event":{"type":"receiveHeartbeat","params":[{"key": "entry","value":"${dataBase64}"},{"key": "signature","value":"${signature}"}]}}}`
 
     consensuswrap.LoggerDebug("diseminate append entry...", ["nodeId", nodeId.toString(), "receiver", nodeIp, "count", entries.length.toString(), "from", nextIndex.toString(), "to", lastIndex.toString()])
     const msgBase64 = encodeBase64(Uint8Array.wrap(String.UTF8.encode(msgstr)));
@@ -886,11 +933,8 @@ function startBlockProposal(txs: string[], cummulatedGas: i64, maxDataBytes: i64
     // lastExtCommit = cs.LastCommit.MakeExtendedCommit(cs.state.ConsensusParams.ABCI)
     const localLastCommit = new typestnd.ExtendedCommitInfo(0, new Array<typestnd.ExtendedVoteInfo>(0));
     const nextValidatorsHash = getValidatorsHash(validators);
-    const proposerAddress = currentState.current_validator;
     const misbehavior: typestnd.Misbehavior[] = []; // block.Evidence.Evidence.ToABCI()
-
     const time = new Date(Date.now())
-
     const prepareReq = new typestnd.RequestPrepareProposal(
         maxDataBytes,
         txs,
@@ -899,7 +943,7 @@ function startBlockProposal(txs: string[], cummulatedGas: i64, maxDataBytes: i64
         height,
         time.toISOString(),
         nextValidatorsHash,
-        proposerAddress,
+        currentState.validator_address,
     );
 
     const prepareResp = consensuswrap.PrepareProposal(prepareReq);
@@ -1486,4 +1530,15 @@ function getRandomInRange(min: i64, max: i64): i64 {
     const rand = Math.random()
     const numb = Math.floor(rand * f64((max - min + 1)))
     return i64(numb) + min;
+}
+
+export function signMessage(msgstr: string): Base64String {
+    const currentState = getCurrentState();
+    return consensuswrap.ed25519Sign(currentState.validator_privkey, msgstr);
+}
+
+export function verifyMessage(nodeIndex: i32, signatureStr: Base64String, msg: string): boolean {
+    const validators = getValidators();
+    const validator = validators[nodeIndex];
+    return consensuswrap.ed25519Verify(validator.pub_key, signatureStr, msg);
 }

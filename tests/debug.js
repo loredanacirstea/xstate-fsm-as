@@ -150,6 +150,19 @@ async function instantiate(module, imports = {}) {
         value = __liftBuffer(value >>> 0);
         return __lowerBuffer(__module1.MerkleHash(value)) || __notnull();
       },
+      ed25519Verify(pubKey, signature, msgbz) {
+        // assembly/consensus/ed25519Verify(~lib/arraybuffer/ArrayBuffer, ~lib/arraybuffer/ArrayBuffer, ~lib/arraybuffer/ArrayBuffer) => i32
+        pubKey = __liftBuffer(pubKey >>> 0);
+        signature = __liftBuffer(signature >>> 0);
+        msgbz = __liftBuffer(msgbz >>> 0);
+        return __module1.ed25519Verify(pubKey, signature, msgbz);
+      },
+      ed25519Sign(privKey, msgbz) {
+        // assembly/consensus/ed25519Sign(~lib/arraybuffer/ArrayBuffer, ~lib/arraybuffer/ArrayBuffer) => ~lib/arraybuffer/ArrayBuffer
+        privKey = __liftBuffer(privKey >>> 0);
+        msgbz = __liftBuffer(msgbz >>> 0);
+        return __lowerBuffer(__module1.ed25519Sign(privKey, msgbz)) || __notnull();
+      },
     }),
   };
   const { exports } = await WebAssembly.instantiate(module, adaptedImports);

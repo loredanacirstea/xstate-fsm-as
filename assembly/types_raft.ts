@@ -1,4 +1,5 @@
 import { JSON } from "json-as/assembly";
+import { Base64String } from "./types";
 
 // @ts-ignore
 @serializable
@@ -118,6 +119,32 @@ export class VoteRequest {
         this.lastLogIndex = lastLogIndex;
         this.lastLogTerm = lastLogTerm;
     }
+}
+
+// @ts-ignore
+@serializable
+export class NodeUpdate {
+    ip: string;
+    index: i32;
+    type: i32; // removed = 0; added = 1; updated = 2;
+    validator_info: Base64String; // "" if a remove or update; ValidatorInfo if added
+    constructor(ip: string, index: i32, type: i32, validator_info: Base64String) {
+        this.ip = ip;
+        this.index = index;
+        this.type = type;
+        this.validator_info = validator_info;
+    }
+}
+
+// @ts-ignore
+@serializable
+export class UpdateNodeResponse {
+  nodeIPs: string[]
+  nodeId: i32
+  constructor(nodeIPs: string[], nodeId: i32) {
+    this.nodeIPs = nodeIPs
+    this.nodeId = nodeId
+  }
 }
 
 // @ts-ignore

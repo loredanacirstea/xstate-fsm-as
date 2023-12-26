@@ -1,5 +1,5 @@
 import { JSON } from "json-as/assembly";
-import { encode as encodeBase64, decode as decodeBase64 } from "as-base64/assembly";
+import { encode as encodeBase64, decode as decodeBase64, decode } from "as-base64/assembly";
 import * as consensus from './consensus';
 import {
     ResponseWrap,
@@ -16,6 +16,7 @@ import {
     RequestCheckTx,
     ResponseCheckTx,
 } from './types_tendermint';
+import { Base64String } from "./types";
 
 // @ts-ignore
 @serializable
@@ -123,3 +124,17 @@ export function RollbackToVersion(height: i64): string {
     return errstr;
 }
 
+export function ed25519Sign(privKeyStr: string, msgstr: string): Base64String {
+    const msgBase64 = Uint8Array.wrap(String.UTF8.encode(msgstr));
+    const privKey = decodeBase64(privKeyStr);
+    const signature = consensus.ed25519Sign(privKey.buffer, msgBase64.buffer);
+    return encodeBase64(Uint8Array.wrap(signature));
+}
+
+export function ed25519Verify(pubKeyStr: Base64String, signatureStr: Base64String, msg: string): boolean {
+    const pubKey = decodeBase64(pubKeyStr);
+    const signature = decodeBase64(signatureStr);
+    const resp = consensus.ed25519Verify(pubKey.buffer, signature.buffer, String.UTF8.encode(msg))
+    if (resp == 1) return true;
+    return false;
+}
