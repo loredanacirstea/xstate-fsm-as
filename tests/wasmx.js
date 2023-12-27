@@ -34,7 +34,7 @@ export function wasmx(storageMap, env, logType = LOG.error) {
         const key = [...new Uint8Array(keybuf)];
         const value = [...new Uint8Array(valuebuf)];
         if (logType > 1) {
-            console.log('-host-storageStore', [...new Uint8Array(keybuf)], [...new Uint8Array(valuebuf)]);
+            console.log('-host-storageStore', [...new Uint8Array(keybuf)]);
         }
         storageMap[key.toString()] = value;
     }
@@ -43,7 +43,7 @@ export function wasmx(storageMap, env, logType = LOG.error) {
         const key = [...new Uint8Array(keybuf)];
         const value = new Uint8Array(storageMap[key.toString()] || []).buffer;
         if (logType > 1) {
-            console.log('-host-storageLoad', [...new Uint8Array(keybuf)], [...new Uint8Array(value)]);
+            console.log('-host-storageLoad', [...new Uint8Array(keybuf)]);
         }
         return value;
     }

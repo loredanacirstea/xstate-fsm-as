@@ -55,6 +55,10 @@ export const BlockPartSizeBytes: u32 = 65536 // 64kB
 // MaxBlockPartsCount is the maximum number of block parts.
 export const MaxBlockPartsCount = (MaxBlockSizeBytes / BlockPartSizeBytes) + 1
 
+const NODE_UPDATE_REMOVE = 0
+const NODE_UPDATE_ADD = 1
+const NODE_UPDATE_UPDATE = 2
+
 //// storage
 
 
@@ -131,7 +135,7 @@ export function registeredCheck(
     // TODO voting_power & proposer_priority
     const validatorInfo = new typestnd.ValidatorInfo(currentState.validator_address, currentState.validator_pubkey, 0, 0);
     const validatorInfoStr = encodeBase64(Uint8Array.wrap(String.UTF8.encode(JSON.stringify<typestnd.ValidatorInfo>(validatorInfo))))
-    const updateMsg = new NodeUpdate(nodeIp, nodeId, 0, validatorInfoStr);
+    const updateMsg = new NodeUpdate(nodeIp, nodeId, NODE_UPDATE_ADD, validatorInfoStr);
     const updateMsgStr = JSON.stringify<NodeUpdate>(updateMsg);
     const signature = signMessage(updateMsgStr);
 
@@ -181,20 +185,21 @@ export function updateNodeAndReturn(
         }
     }
     if (entryBase64 === "") {
-        revert("vote: empty entry");
+        revert("updateNodeAndReturn: empty entry");
     }
     if (signature === "") {
-        revert("vote: empty signature");
+        revert("updateNodeAndReturn: empty signature");
     }
     const entryStr = String.UTF8.decode(decodeBase64(entryBase64).buffer);
+    consensuswrap.LoggerDebug("updateNodeAndReturn", ["entry", entryStr, "signature", signature])
     let entry: NodeUpdate = JSON.parse<NodeUpdate>(entryStr);
 
+    consensuswrap.LoggerInfo("update node", ["ip", entry.ip, "type", entry.type.toString(), "validator_info", "index", entry.index.toString(), entry.validator_info])
+
     const ips = getNodeIPs();
-    // removed
-    if (entry.type == 0) {
-        // idempotent
-        ips[entry.index] = "";
-    } else if (entry.type == 1) {
+    let entryIndex = entry.index;
+
+    if (entry.type == NODE_UPDATE_ADD) {
         if (entry.validator_info == "") {
             consensuswrap.LoggerError("validator info missing from node update", ["ip", entry.ip])
             return;
@@ -204,8 +209,34 @@ export function updateNodeAndReturn(
             consensuswrap.LoggerDebug("ip already included", ["ip", entry.ip])
             return;
         }
+        entryIndex = ips.length;
+
+        // verify signature and store the new validator
         const validatorInfo = JSON.parse<typestnd.ValidatorInfo>(String.UTF8.decode(decodeBase64(entry.validator_info).buffer))
-        const newindex = ips.length;
+        const isSender = consensuswrap.ed25519Verify(validatorInfo.pub_key, signature, entryStr);
+        if (!isSender) {
+            consensuswrap.LoggerError("signature verification failed", ["nodeIndex", entryIndex.toString(), "nodeIp", entry.ip]);
+            return;
+        }
+
+        const validators = getValidators();
+        validators.push(validatorInfo);
+        setValidators(validators);
+
+    } else {
+        // verify signature
+        const isSender = verifyMessage(entryIndex, signature, entryStr);
+        if (!isSender) {
+            consensuswrap.LoggerError("signature verification failed", ["nodeIndex", entryIndex.toString(), "nodeIp", entry.ip]);
+            return;
+        }
+    }
+
+    // removed
+    if (entry.type == NODE_UPDATE_REMOVE) {
+        // idempotent
+        ips[entryIndex] = "";
+    } else if (entry.type == NODE_UPDATE_ADD) {
         ips.push(entry.ip);
         const nextIndexes = getNextIndexArray();
         const matchIndexes = getMatchIndexArray();
@@ -213,22 +244,12 @@ export function updateNodeAndReturn(
         matchIndexes.push(LOG_START);
         setNextIndexArray(nextIndexes);
         setMatchIndexArray(matchIndexes);
-        const validators = getValidators();
-        validators.push(validatorInfo);
-        setValidators(validators);
-        const response = new UpdateNodeResponse(ips, newindex);
-        entry.index = newindex;
+        const response = new UpdateNodeResponse(ips, entryIndex);
         wasmx.setReturnData(String.UTF8.encode(JSON.stringify<UpdateNodeResponse>(response)));
     } else {
+        // NODE_UPDATE_UPDATE
         // just update the ip
-        ips[entry.index] = entry.ip;
-    }
-
-    // verify signature
-    const isSender = verifyMessage(entry.index, signature, entryStr);
-    if (!isSender) {
-        consensuswrap.LoggerError("signature verification failed", ["nodeIndex", entry.index.toString(), "nodeIp", entry.ip]);
-        return;
+        ips[entryIndex] = entry.ip;
     }
 
     consensuswrap.LoggerInfo("node updates", ["ips", ips.join(",")])

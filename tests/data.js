@@ -610,7 +610,7 @@ export const RAFT_Full = {
     electionTimeout: "0",
     maxElectionTime: "20000",
     minElectionTime: "10000",
-    heartbeatTimeout: "3000",
+    heartbeatTimeout: "5000",
   },
   id: "RAFT-FULL-1",
   initial: "uninitialized",
