@@ -80,9 +80,9 @@ export class AppendEntry {
     entries: Array<LogEntry>
     // leader’s commitIndex
     leaderCommit: i64;
-    // empty if not changed
     nodeIps: Array<string>;
-    constructor(termId: i32, leaderId: i32, prevLogIndex: i64, prevLogTerm: i32, entries: Array<LogEntry>, leaderCommit: i64, nodeIps: Array<string>) {
+    validators: Base64String;
+    constructor(termId: i32, leaderId: i32, prevLogIndex: i64, prevLogTerm: i32, entries: Array<LogEntry>, leaderCommit: i64, nodeIps: Array<string>, validators: Base64String) {
         this.termId = termId;
         this.leaderId = leaderId;
         this.prevLogIndex = prevLogIndex;
@@ -90,6 +90,7 @@ export class AppendEntry {
         this.entries = entries;
         this.leaderCommit = leaderCommit;
         this.nodeIps = nodeIps;
+        this.validators = validators;
     }
 }
 
@@ -141,9 +142,11 @@ export class NodeUpdate {
 export class UpdateNodeResponse {
   nodeIPs: string[]
   nodeId: i32
-  constructor(nodeIPs: string[], nodeId: i32) {
+  validators: Base64String
+  constructor(nodeIPs: string[], nodeId: i32, validators: Base64String) {
     this.nodeIPs = nodeIPs
     this.nodeId = nodeId
+    this.validators = validators
   }
 }
 

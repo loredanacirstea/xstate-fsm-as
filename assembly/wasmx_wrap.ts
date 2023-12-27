@@ -142,7 +142,9 @@ export function grpcRequest(ip: string, contract: Uint8Array, data: string): Grp
     console.debug("grpc response: " + String.UTF8.decode(result));
     const response = JSON.parse<GrpcResponse>(String.UTF8.decode(result));
     console.debug("grpc response data: " + response.data);
-    response.data = String.UTF8.decode(decodeBase64(response.data).buffer);
+    if (response.error.length == 0) {
+        response.data = String.UTF8.decode(decodeBase64(response.data).buffer);
+    }
     return response;
 }
 

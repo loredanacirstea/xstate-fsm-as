@@ -131,9 +131,7 @@ export function registeredCheck(
     const nodeId = getCurrentNodeId();
     const nodeIp = ips[nodeId];
     // TODO signature on protobuf encoding, not JSON
-    const currentState = getCurrentState();
-    // TODO voting_power & proposer_priority
-    const validatorInfo = new typestnd.ValidatorInfo(currentState.validator_address, currentState.validator_pubkey, 0, 0);
+    const validatorInfo = getCurrentValidator();
     const validatorInfoStr = encodeBase64(Uint8Array.wrap(String.UTF8.encode(JSON.stringify<typestnd.ValidatorInfo>(validatorInfo))))
     const updateMsg = new NodeUpdate(nodeIp, nodeId, NODE_UPDATE_ADD, validatorInfoStr);
     const updateMsgStr = JSON.stringify<NodeUpdate>(updateMsg);
@@ -159,11 +157,16 @@ export function registeredCheck(
         }
         const resp = JSON.parse<UpdateNodeResponse>(response.data);
         if (resp.nodeIPs[resp.nodeId] != nodeIp) {
-            consensuswrap.LoggerError("register response has wrong ip", ["expected", nodeIp]);
-            // TODO what?
+            consensuswrap.LoggerError("register node response has wrong ip", ["expected", nodeIp]);
+            revert(`register node response has wrong ip`)
         }
+        const allvalidStr = String.UTF8.decode(decodeBase64(resp.validators).buffer);
+        console.debug("* register node allvalidStr: " + allvalidStr)
+        const allvalidators = JSON.parse<typestnd.ValidatorInfo[]>(allvalidStr);
+        checkValidatorsUpdate(allvalidators, validatorInfo, resp.nodeId);
         setCurrentNodeId(resp.nodeId);
         setNodeIPs(resp.nodeIPs);
+        setValidators(allvalidators);
     }
 }
 
@@ -244,7 +247,8 @@ export function updateNodeAndReturn(
         matchIndexes.push(LOG_START);
         setNextIndexArray(nextIndexes);
         setMatchIndexArray(matchIndexes);
-        const response = new UpdateNodeResponse(ips, entryIndex);
+        const validators = encodeBase64(Uint8Array.wrap(String.UTF8.encode(storage.getContextValue(VALIDATORS_KEY))))
+        const response = new UpdateNodeResponse(ips, entryIndex, validators);
         wasmx.setReturnData(String.UTF8.encode(JSON.stringify<UpdateNodeResponse>(response)));
     } else {
         // NODE_UPDATE_UPDATE
@@ -307,6 +311,23 @@ export function forwardTxsToLeader(
     }
 
     setMempool(mempool);
+}
+
+function getCurrentValidator(): typestnd.ValidatorInfo {
+    const currentState = getCurrentState();
+    // TODO voting_power & proposer_priority
+    return new typestnd.ValidatorInfo(currentState.validator_address, currentState.validator_pubkey, 0, 0);
+}
+
+function checkValidatorsUpdate(validators: typestnd.ValidatorInfo[], validatorInfo: typestnd.ValidatorInfo, nodeId: i32): void {
+    if (validators[nodeId].address != validatorInfo.address) {
+        consensuswrap.LoggerError("register node response has wrong validator address", ["expected", validatorInfo.address]);
+        revert(`register node response has wrong validator address`)
+    }
+    if (validators[nodeId].pub_key != validatorInfo.pub_key) {
+        consensuswrap.LoggerError("register node response has wrong validator pub_key", ["expected", validatorInfo.pub_key]);
+        revert(`register node response has wrong validator pub_key`)
+    }
 }
 
 export function initializeNextIndex(
@@ -575,11 +596,15 @@ export function setupNode(
     setLastApplied(LOG_START);
 
     const datajson = String.UTF8.decode(decodeBase64(initChainSetup).buffer);
+    // TODO remove validator private key from logs in initChainSetup
     consensuswrap.LoggerDebug("setupNode", ["currentNodeId", currentNodeId, "nodeIPs", nodeIPs, "initChainSetup", datajson])
     const data = JSON.parse<typestnd.InitChainSetup>(datajson);
+    const ips = JSON.parse<string[]>(nodeIPs);
+    if (ips.length != data.validators.length) {
+        revert(`Node IPS count ${ips.length.toString()} mismatch validator count ${data.validators.length}`);
+    }
     initChain(data);
 
-    const ips = JSON.parse<string[]>(nodeIPs);
     const nextIndex: Array<i64> = [];
     const matchIndex: Array<i64> = [];
     for (let i = 0; i < ips.length; i++) {
@@ -679,7 +704,6 @@ export function processAppendEntries(
     const ips = getNodeIPs();
     const nodeId = getCurrentNodeId();
     const nodeIp = ips[nodeId];
-    setNodeIPs(entry.nodeIps);
     // check that our nodeId is still in line
     let newId = nodeId;
     for(let i = 0; i < entry.nodeIps.length; i++) {
@@ -692,6 +716,13 @@ export function processAppendEntries(
         consensuswrap.LoggerDebug("our node ID has changed", ["old", nodeId.toString(), "new", newId.toString()])
         setCurrentNodeId(newId);
     }
+    const allvalidStr = String.UTF8.decode(decodeBase64(entry.validators).buffer);
+    console.debug("* processAppendEntries allvalidStr: " + allvalidStr)
+    const allvalidators = JSON.parse<typestnd.ValidatorInfo[]>(allvalidStr);
+    const validatorInfo = getCurrentValidator();
+    checkValidatorsUpdate(allvalidators, validatorInfo, newId);
+    setNodeIPs(entry.nodeIps);
+    setValidators(allvalidators);
 }
 
 export function processAppendEntry(entry: LogEntry): void {
@@ -809,6 +840,7 @@ export function sendAppendEntry(
         previousEntry = new LogEntry(0, 0, 0, "", "", "", "");
     }
     const lastCommitIndex = getCommitIndex();
+    const validators = encodeBase64(Uint8Array.wrap(String.UTF8.encode(storage.getContextValue(VALIDATORS_KEY))))
     const data = new AppendEntry(
         getTermId(),
         getCurrentNodeId(),
@@ -817,6 +849,7 @@ export function sendAppendEntry(
         entries,
         lastCommitIndex,
         nodeIps,
+        validators,
     )
     const datastr = JSON.stringify<AppendEntry>(data);
     const signature = signMessage(datastr);
