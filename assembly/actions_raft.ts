@@ -600,7 +600,8 @@ export function setupNode(
     consensuswrap.LoggerDebug("setupNode", ["currentNodeId", currentNodeId, "nodeIPs", nodeIPs, "initChainSetup", datajson])
     const data = JSON.parse<typestnd.InitChainSetup>(datajson);
     const ips = JSON.parse<string[]>(nodeIPs);
-    if (ips.length != data.validators.length) {
+    // TODO better way; we may have the leader's node ip here
+    if (ips.length < data.validators.length) {
         revert(`Node IPS count ${ips.length.toString()} mismatch validator count ${data.validators.length}`);
     }
     initChain(data);
